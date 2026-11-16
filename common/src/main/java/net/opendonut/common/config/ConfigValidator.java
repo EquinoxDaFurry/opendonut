@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.RegionBounds;
 import net.opendonut.common.model.ServerDefinition;
@@ -322,6 +323,29 @@ public final class ConfigValidator {
 			issues.add(IssueCode.DERIVED_VALUE, "servers", sourceMap.line("servers"),
 					"only one server is configured: OpenDonut will never transfer a player, which is a "
 							+ "valid way to stage a rollout");
+		}
+
+		// The border-particle wall is cosmetic, but two of its settings interact: the wall is a disc, so the
+		// number of particles needed grows with the square of the radius, and a budget below that silently
+		// trims the wall a player sees at close range. Worth saying, since the symptom (a sparse wall) looks
+		// like a bug rather than a setting.
+		BorderParticleSettings particles = config.borderParticles();
+		if (particles.enabled()) {
+			long discBlocks = Math.round(Math.PI * particles.radius() * particles.radius());
+			issues.add(IssueCode.DERIVED_VALUE, "border-particles", sourceMap.line("border-particles"),
+					"border particles: " + particles.describe() + "; the wall is about " + discBlocks
+							+ " block(s) across at its widest");
+			if (particles.maxPerSide() < discBlocks) {
+				issues.add(IssueCode.DERIVED_VALUE, "border-particles", sourceMap.line("border-particles"),
+						"border-particles.max-per-side (" + particles.maxPerSide()
+								+ ") is smaller than the wall a radius of " + particles.radius()
+								+ " produces (" + discBlocks + " block(s) per side), so the nearest particles "
+								+ "are kept and the wall is trimmed at close range. Raise it to "
+								+ discBlocks + " for an untrimmed wall.");
+			}
+		} else {
+			issues.add(IssueCode.DERIVED_VALUE, "border-particles", sourceMap.line("border-particles"),
+					"border particles are disabled: players will not see their region's edge");
 		}
 
 		// The proxy holds an arriving player on a backend that has not announced itself yet, and the backend

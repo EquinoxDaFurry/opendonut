@@ -36,6 +36,7 @@ public final class OpenDonutConfig {
 	private final ProxySettings proxy;
 	private final TransferSettings transfer;
 	private final BackendSettings backend;
+	private final BorderParticleSettings borderParticles;
 
 	/**
 	 * The lazily built region index. {@code volatile} so that publishing it from whichever thread
@@ -59,6 +60,7 @@ public final class OpenDonutConfig {
 	 * @param proxy proxy-only settings (ignored by backends)
 	 * @param transfer backend transfer behaviour
 	 * @param backend identity of the instance reading this file
+	 * @param borderParticles the cosmetic boundary wall
 	 */
 	public OpenDonutConfig(
 			String sourceName,
@@ -68,7 +70,8 @@ public final class OpenDonutConfig {
 			BridgeSettings bridge,
 			ProxySettings proxy,
 			TransferSettings transfer,
-			BackendSettings backend) {
+			BackendSettings backend,
+			BorderParticleSettings borderParticles) {
 		this.sourceName = Objects.requireNonNull(sourceName, "sourceName");
 		this.world = Objects.requireNonNull(world, "world");
 		this.servers = List.copyOf(Objects.requireNonNull(servers, "servers"));
@@ -77,6 +80,7 @@ public final class OpenDonutConfig {
 		this.proxy = Objects.requireNonNull(proxy, "proxy");
 		this.transfer = Objects.requireNonNull(transfer, "transfer");
 		this.backend = Objects.requireNonNull(backend, "backend");
+		this.borderParticles = Objects.requireNonNull(borderParticles, "borderParticles");
 	}
 
 	/** @return the origin of this configuration, usually a file name */
@@ -117,6 +121,11 @@ public final class OpenDonutConfig {
 	/** @return the identity of the instance that loaded this file */
 	public BackendSettings backend() {
 		return backend;
+	}
+
+	/** @return the cosmetic boundary wall a player sees when approaching their region's edge */
+	public BorderParticleSettings borderParticles() {
+		return borderParticles;
 	}
 
 	/** @return the world border */

@@ -167,6 +167,59 @@ transfer:
   unassigned-area-policy: allow
 
 # -----------------------------------------------------------------------------
+#  The visible boundary (backends only)
+# -----------------------------------------------------------------------------
+#
+# A wall of particles on the boundary a player is walking towards, so the edge
+# of their region is something they can see coming rather than something they
+# discover by being teleported.
+#
+# It is the intersection of a sphere around each player with the boundary plane,
+# so it is one block thick, it appears only when a player is within `radius`
+# blocks of an edge, and it grows as they get closer. A player in the middle of
+# their region sees nothing at all.
+#
+# The particles stand in the centre of every block of that intersection:
+#
+#     border-particles:
+#       radius: 9                 ..o..            a few, 9 blocks out
+#                                 .ooo.
+#                                .ooooo.
+#                                 .ooo.
+#                                  .o.
+#
+#     the same wall, standing on the boundary:
+#
+#                              ooooooooooo
+#                              ooooooooooo
+#                              ooooooooooo
+#
+border-particles:
+  # true by default: it is the only part of OpenDonut a player notices without
+  # being told, and it makes a boundary feel intentional.
+  enabled: true
+
+  # Any Minecraft particle that needs no extra data. 'end_rod' is bright, still
+  # and unmistakable; 'minecraft:end_rod' works too. A particle with parameters,
+  # such as a dust colour, cannot be named here and falls back to end_rod with a
+  # warning in the log.
+  particle: end_rod
+
+  # The radius of the sphere around each player, 1-32 blocks. 9 shows the wall
+  # just before a player reaches it without filling their view.
+  radius: 9
+
+  # How often the wall is redrawn, in ticks (20 ticks = 1 second). Particles are
+  # short-lived, so redrawing is what keeps the wall present. 4 is five times a
+  # second; 1 redraws every tick and costs five times as much traffic.
+  interval-ticks: 4
+
+  # The most particles sent for any one side of the region, nearest first. A
+  # radius of 9 needs about 254 per side, so the default leaves room to spare and
+  # still bounds what one player can cost.
+  max-per-side: 256
+
+# -----------------------------------------------------------------------------
 #  This instance (backends only; the proxy ignores it)
 # -----------------------------------------------------------------------------
 # A backend usually works out which entry below is its own by comparing its

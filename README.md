@@ -59,6 +59,7 @@ OpenDonut is at **0.1.0-dev**, an early prototype. Being precise about that is m
 | Configuration validation | **Complete.** Detects duplicate ids, inverted and misaligned bounds, overlaps, gaps, out-of-border regions, invalid addresses, unknown keys, bad YAML — with file paths and line numbers |
 | Velocity plugin | **Implemented** against velocity-api 4.3.1: channel registration, HMAC-authenticated messages, authoritative routing, backend verification, connection requests, admin command |
 | Fabric mod | **Implemented** against Minecraft 26.3 / Fabric Loader 0.20.1: tick-based boundary detection, transfer requests, arrival placement, failure recovery, admin command |
+| Visible boundary (border particles) | **Implemented.** A one-block-thick wall of particles on the boundary a player approaches, clipped to a sphere, so it grows as they get closer and is invisible from the middle of a region. `/opendonut border` reports it; see [configuration.md](docs/configuration.md#border-particles) |
 | End-to-end transfer with a real client | **Not yet verified.** The integration was built and compiles against the real APIs, but this repository has no automated way to attach a Minecraft client and walk across a boundary. Treat the first run as a test to be observed, not a feature to be trusted. |
 | Player data (inventory, health, XP) across a transfer | **Not implemented.** Velocity and Fabric do not synchronise it, and OpenDonut does not pretend otherwise. See [docs/architecture.md](docs/architecture.md#what-is-not-synchronised) |
 | Block modification / entity ownership enforcement | **Not implemented.** The *player* is kept inside their region; chunk-level write protection is future work |
@@ -189,6 +190,7 @@ Details, including the security reasoning and the failure cases, are in
 | [docs/installation.md](docs/installation.md) | Installing the proxy and backends, secure forwarding, seeding worlds, running the tests |
 | [docs/adding-servers.md](docs/adding-servers.md) | Adding the third, fourth and twentieth server without touching Java code |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Every symptom with its diagnosis, including seed changes and failed transfers |
+| [docs/plan-player-data-sync.md](docs/plan-player-data-sync.md) | **Proposal, not implemented.** How inventories, XP and the rest could follow a player across a boundary, including the designs that should be rejected, the lease-based design that should not, and how to test it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, and the rules a change has to follow |
 
 ## Project layout

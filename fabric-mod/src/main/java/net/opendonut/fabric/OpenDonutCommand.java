@@ -57,6 +57,7 @@ final class OpenDonutCommand {
 				.executes(context -> status(context, backend))
 				.then(Commands.literal("status").executes(context -> status(context, backend)))
 				.then(Commands.literal("region").executes(context -> region(context, backend)))
+				.then(Commands.literal("border").executes(context -> border(context, backend)))
 				.then(Commands.literal("players").executes(context -> players(context, backend)))
 				.then(Commands.literal("route")
 						.then(Commands.argument("x", IntegerArgumentType.integer())
@@ -99,6 +100,32 @@ final class OpenDonutCommand {
 				"owns " + self.bounds().describe(),
 				"which is " + self.bounds().width() + " x " + self.bounds().depth() + " blocks ("
 						+ chunks + " chunks)"));
+		return 1;
+	}
+
+	/**
+	 * Reports what the border-particle wall looks like from where the player is standing.
+	 *
+	 * <p>The wall is the one part of OpenDonut that cannot be checked from a log line, so it gets a command:
+	 * the particle count rises as the player walks towards the boundary and falls to zero in the middle of the
+	 * region, which is the whole behaviour in one number.
+	 *
+	 * @param context the command context
+	 * @param backend supplies the backend
+	 * @return 1 when the command ran
+	 */
+	private static int border(CommandContext<CommandSourceStack> context, Supplier<OpenDonutBackend> backend) {
+		OpenDonutBackend active = backend.get();
+		if (active == null) {
+			return reportInactive(context);
+		}
+		Optional<net.minecraft.server.level.ServerPlayer> player = player(context);
+		if (player.isEmpty()) {
+			send(context, "Run this in game: the report is about the position of the player asking.");
+			send(context, "Settings: " + active.config().borderParticles().describe());
+			return 1;
+		}
+		send(context, active.describeBorderFor(player.get()));
 		return 1;
 	}
 

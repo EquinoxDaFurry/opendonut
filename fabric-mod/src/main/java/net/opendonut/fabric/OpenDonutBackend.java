@@ -83,6 +83,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 
 	private MinecraftServer server;
 	private BackendBridge bridge;
+	private Optional<BorderParticles> borderParticles = Optional.empty();
 	private Path configPath;
 	private Path configDirectory;
 	private boolean transfersEnabled;
@@ -171,6 +172,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		backend.configPath = configPath;
 		backend.configDirectory = configDirectory;
 		backend.setUpBridge(server, configDirectory, configPath);
+		backend.borderParticles = BorderParticles.create(config.borderParticles(), logger);
 		// The full "who am I and where am I" summary is logged by completeStartup, once the world is known.
 		return Optional.of(backend);
 	}
@@ -480,6 +482,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 */
 	public void onPlayerDisconnect(ServerPlayer player) {
 		tracker.forget(player.getUUID());
+		borderParticles.ifPresent(particles -> particles.forget(player.getUUID()));
 	}
 
 	/**
@@ -521,10 +524,15 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 * @param server the running server
 	 */
 	public void tick(MinecraftServer server) {
+		List<ServerPlayer> players = server.getPlayerList().getPlayers();
+
+		// Cosmetic, and deliberately before every other check: a player should see where their region ends even
+		// when this backend is not allowed to transfer them, because that is exactly when knowing matters.
+		borderParticles.ifPresent(particles -> particles.tick(players, self.bounds(), server.getTickCount()));
+
 		if (bridge == null || !transfersEnabled) {
 			return;
 		}
-		List<ServerPlayer> players = server.getPlayerList().getPlayers();
 		List<UUID> online = new ArrayList<>(players.size());
 		for (ServerPlayer player : players) {
 			online.add(player.getUUID());
@@ -919,6 +927,18 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	/** @return the per-player transfer state, for the status command */
 	PlayerTransferTracker tracker() {
 		return tracker;
+	}
+
+	/**
+	 * Describes what the border-particle wall looks like from a player's position, for {@code /opendonut border}.
+	 *
+	 * @param player the player asking
+	 * @return a multi-line report
+	 */
+	public String describeBorderFor(ServerPlayer player) {
+		return borderParticles
+				.map(particles -> particles.describeFor(player, self.bounds()))
+				.orElse("border particles are disabled (border-particles.enabled: false)");
 	}
 
 	/** @return the bridge, or empty when it could not be created */

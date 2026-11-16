@@ -12,6 +12,7 @@ import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.SequenceNode;
 
 import net.opendonut.common.model.BackendSettings;
+import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.BridgeSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.ProxySettings;
@@ -49,7 +50,8 @@ final class ConfigParser {
 	static final int SUPPORTED_CONFIG_VERSION = 1;
 
 	private static final Set<String> ROOT_KEYS = Set.of(
-			"config-version", "world", "servers", "validation", "bridge", "proxy", "transfer", "backend");
+			"config-version", "world", "servers", "validation", "bridge", "proxy", "transfer", "backend",
+			"border-particles");
 	private static final Set<String> WORLD_KEYS = Set.of("name", "seed", "border");
 	private static final Set<String> BORDER_KEYS = Set.of("center-x", "center-z", "size");
 	private static final Set<String> SERVER_KEYS = Set.of("id", "address", "bounds");
@@ -65,6 +67,8 @@ final class ConfigParser {
 			"boundary-margin-blocks", "join-grace-ticks", "cooldown-seconds", "max-pending-seconds",
 			"on-transfer-failure", "unassigned-area-policy");
 	private static final Set<String> BACKEND_KEYS = Set.of("server-id", "enabled");
+	private static final Set<String> BORDER_PARTICLES_KEYS =
+			Set.of("enabled", "particle", "radius", "interval-ticks", "max-per-side");
 
 	private final ValidationResult.Collector issues;
 	private final YamlAccess yaml;
@@ -105,6 +109,8 @@ final class ConfigParser {
 		ProxySettings proxy = parseProxy(rootEntries.get("proxy"), policy);
 		TransferSettings transfer = parseTransfer(rootEntries.get("transfer"), policy);
 		BackendSettings backend = parseBackend(rootEntries.get("backend"), policy);
+		BorderParticleSettings borderParticles =
+				parseBorderParticles(rootEntries.get("border-particles"), policy);
 
 		yaml.reportUnknownKeys(rootEntries, "", ROOT_KEYS, policy);
 
@@ -115,7 +121,7 @@ final class ConfigParser {
 		}
 
 		return Optional.of(new OpenDonutConfig(
-				sourceName, world, servers, validation, bridge, proxy, transfer, backend));
+				sourceName, world, servers, validation, bridge, proxy, transfer, backend, borderParticles));
 	}
 
 	/**
@@ -410,6 +416,42 @@ final class ConfigParser {
 			return new TransferSettings(margin, grace, cooldown, maxPending, failure, unassigned);
 		} catch (IllegalArgumentException e) {
 			yaml.report(IssueCode.INVALID_VALUE, "transfer", YamlAccess.lineOf(mapping), e.getMessage());
+			return settings;
+		}
+	}
+
+	/**
+	 * Parses the {@code border-particles} section.
+	 *
+	 * <p>Every key is optional, because the section is cosmetic: its absence must never be an error, and an
+	 * administrator who writes only {@code enabled: false} should not have to write out the rest.
+	 *
+	 * @param node the section node, may be {@code null}
+	 * @param policy what to do with unrecognised keys
+	 * @return the settings
+	 */
+	private BorderParticleSettings parseBorderParticles(Node node, UnknownFieldPolicy policy) {
+		MappingNode mapping = yaml.asMapping(node, "border-particles", false);
+		BorderParticleSettings settings = BorderParticleSettings.DEFAULT;
+		if (mapping == null) {
+			return settings;
+		}
+		sourceMap.put("border-particles", YamlAccess.lineOf(node));
+		Map<String, Node> entries = yaml.entries(mapping, "border-particles");
+
+		Boolean enabled = yaml.readBoolean(entries, "enabled", "border-particles", settings.enabled());
+		String particle = yaml.readString(entries, "particle", "border-particles", settings.particle(), false);
+		Integer radius = yaml.readInt(entries, "radius", "border-particles", settings.radius(), false);
+		Integer interval = yaml.readInt(entries, "interval-ticks", "border-particles", settings.intervalTicks(),
+				false);
+		Integer maxPerSide = yaml.readInt(entries, "max-per-side", "border-particles", settings.maxPerSide(),
+				false);
+		yaml.reportUnknownKeys(entries, "border-particles", BORDER_PARTICLES_KEYS, policy);
+
+		try {
+			return new BorderParticleSettings(enabled, particle, radius, interval, maxPerSide);
+		} catch (IllegalArgumentException e) {
+			yaml.report(IssueCode.INVALID_VALUE, "border-particles", YamlAccess.lineOf(mapping), e.getMessage());
 			return settings;
 		}
 	}

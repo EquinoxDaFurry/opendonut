@@ -100,6 +100,7 @@ Each item is something to observe, not something to assume.
 |---|---|---|
 | 1 | Backend startup | `this server is 'west' because it listens on port 25566`, `bridge ready ... secret fingerprint XXXX`, `boundary checks are active` |
 | 2 | Proxy startup | `OpenDonut ... is active: 2 region(s) ... seed ... secret fingerprint XXXX` — **the same fingerprint** as the backends |
+| 2a | `/opendonut border` on a backend, in game | The count of particles rises as you walk towards a boundary and falls to zero in the middle of the region; the wall itself should be visible as a grid of end rod particles one block thick |
 | 3 | `/opendonut regions` on the proxy | Two regions, each `[verified]` or `[not yet announced — a transfer will verify it on arrival]`. The second is normal for a backend nobody has been sent to yet: a backend announces itself through a player's connection, so it cannot have announced itself before its first player |
 | 4 | Compare `/opendonut route <x> <z>` on the proxy and on each backend, for a point on each side of the boundary | All three agree, per side |
 | 5 | Walk east from the middle of `west` past `x = 0` | `west` logs `left region 'west' (past max-x, N block(s) outside) ... asked the proxy to move them`; the proxy logs `moving <player> from 'west' to 'east' at global (...) because past max-x`; `east` logs `placed <player> at global (...)` |

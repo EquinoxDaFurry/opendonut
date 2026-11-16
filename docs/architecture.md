@@ -404,6 +404,12 @@ of that guarantee, and is future work.
 This is a bigger deal for players than for administrators, so say it out loud before promising a seamless world:
 **0.1.0-dev routes players and preserves their coordinates. It does not yet preserve their belongings.**
 
+A concrete design for closing that gap — a lease-based player-data service behind the proxy, reachable from the
+backends over the bridge that already exists, with a database for durability — is written up in
+[plan-player-data-sync.md](plan-player-data-sync.md). It is a proposal, not implemented; the reasoning there
+(why shared world folders duplicate items, why the lease is the load-bearing part) applies to any attempt at
+this problem, not just that design.
+
 ## 9. Version matrix
 
 Every version below was verified against upstream metadata on 2026-11-17, not remembered.

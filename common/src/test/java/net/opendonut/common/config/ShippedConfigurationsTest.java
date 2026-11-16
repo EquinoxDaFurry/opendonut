@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.ServerDefinition;
 
@@ -115,6 +116,18 @@ class ShippedConfigurationsTest {
 		// A point in the middle of each quadrant.
 		assertEquals("nw", config.findOwner(-50000, -50000).orElseThrow().id());
 		assertEquals("se", config.findOwner(50000, 50000).orElseThrow().id());
+	}
+
+	@Test
+	@DisplayName("the example documents the visible boundary")
+	void exampleDocumentedBorderParticles() {
+		OpenDonutConfig config = ConfigLoader
+				.load(repositoryRoot().resolve("config/opendonut.example.yml"))
+				.config().orElseThrow();
+		BorderParticleSettings particles = config.borderParticles();
+		assertTrue(particles.enabled(), "the example turns the wall on, so a new deployment sees it");
+		assertEquals(9, particles.radius(), "nine blocks is what the documentation describes");
+		assertEquals(BorderParticleSettings.DEFAULT_PARTICLE, particles.particle());
 	}
 
 	@Test

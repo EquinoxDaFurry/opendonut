@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.TransferFailurePolicy;
 import net.opendonut.common.model.UnknownFieldPolicy;
@@ -135,6 +136,19 @@ class ConfigLoaderTest {
 			assertEquals(TransferFailurePolicy.LOG_ONLY, config.transfer().onTransferFailure());
 			assertEquals(UnassignedAreaPolicy.RETURN, config.transfer().unassignedAreaPolicy());
 			assertEquals("east", config.backend().serverId().orElseThrow());
+		}
+
+		@Test
+		@DisplayName("border particles are on by default, with the documented wall")
+		void borderParticleDefaults() {
+			BorderParticleSettings particles = load(VALID).config().orElseThrow().borderParticles();
+			assertTrue(particles.enabled(), "the wall is on unless it is turned off");
+			assertEquals(BorderParticleSettings.DEFAULT_PARTICLE, particles.particle());
+			assertEquals(9, particles.radius(), "a nine block sphere is the documented default");
+			assertEquals(4, particles.intervalTicks());
+			assertEquals(256, particles.maxPerSide());
+			assertEquals("minecraft:end_rod", particles.qualifiedParticleName(),
+					"a bare name is namespaced when it is resolved against the registry");
 		}
 
 		@Test
@@ -301,6 +315,73 @@ class ConfigLoaderTest {
 			ConfigLoadResult result = load(yaml);
 			assertTrue(result.result().count(Severity.ERROR) >= 2,
 					() -> "expected at least two errors, got:\n" + result.result().formatWithSummary());
+		}
+	}
+
+	@Nested
+	@DisplayName("border particles")
+	class BorderParticles {
+
+		@Test
+		@DisplayName("reads every field, and only the fields it has")
+		void readsTheSection() {
+			ConfigLoadResult result = load(VALID + """
+					border-particles:
+					  enabled: true
+					  particle: minecraft:end_rod
+					  radius: 12
+					  interval-ticks: 2
+					  max-per-side: 512
+					""");
+			assertTrue(result.isUsable(), () -> result.result().formatWithSummary());
+			BorderParticleSettings particles = result.config().orElseThrow().borderParticles();
+			assertTrue(particles.enabled());
+			assertEquals("minecraft:end_rod", particles.particle());
+			assertEquals("minecraft:end_rod", particles.qualifiedParticleName());
+			assertEquals(12, particles.radius());
+			assertEquals(2, particles.intervalTicks());
+			assertEquals(512, particles.maxPerSide());
+		}
+
+		@Test
+		@DisplayName("can be switched off without supplying the rest")
+		void canBeDisabled() {
+			ConfigLoadResult result = load(VALID + "border-particles:\n  enabled: false\n");
+			assertTrue(result.isUsable(), () -> result.result().formatWithSummary());
+			BorderParticleSettings particles = result.config().orElseThrow().borderParticles();
+			assertFalse(particles.enabled());
+			assertEquals(9, particles.radius(), "the other values keep their defaults");
+			assertTrue(particles.describe().contains("disabled"), particles.describe());
+		}
+
+		@Test
+		@DisplayName("rejects a radius outside the supported range")
+		void rejectsAnImpossibleRadius() {
+			ConfigLoadResult result = load(VALID + "border-particles:\n  radius: 999\n");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+			// The default is kept, so a typo cannot produce a wall that floods every connection.
+			assertEquals(9, result.config().orElseThrow().borderParticles().radius());
+		}
+
+		@Test
+		@DisplayName("rejects a particle name that is not a registry name")
+		void rejectsAnImpossibleParticle() {
+			ConfigLoadResult result = load(VALID + "border-particles:\n  particle: \"End Rod!\"\n");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.result().errors().stream()
+							.anyMatch(issue -> issue.message().contains("registry name")),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("a mistyped key is reported like any other unknown key")
+		void reportsUnknownKeys() {
+			ConfigLoadResult result = load(VALID + "border-particles:\n  radius-b: 9\n");
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.isUsable(), "an unknown cosmetic key must not stop a server");
 		}
 	}
 

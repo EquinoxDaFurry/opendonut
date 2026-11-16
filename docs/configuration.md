@@ -352,6 +352,64 @@ The validator warns when two servers share a port, because that makes auto-detec
 
 ---
 
+## `border-particles`
+
+Backends only. A wall of particles on the boundary a player is walking towards, so the edge of their region is
+something they see coming rather than something they discover by being teleported.
+
+```yaml
+border-particles:
+  enabled: true
+  particle: end_rod
+  radius: 9
+  interval-ticks: 4
+  max-per-side: 256
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Draw the wall at all |
+| `particle` | registry name | `end_rod` | Which particle to use. Any particle that needs no extra data (`end_rod`, `minecraft:end_rod`, `flame`, …). A particle with parameters — a dust colour, for instance — cannot be named here and falls back to `end_rod` with a warning in the log |
+| `radius` | 1–32 | `9` | The radius of the sphere around each player, in blocks. The wall is visible from this far away at most |
+| `interval-ticks` | 1–40 | `4` | How often the wall is redrawn. Particles are short-lived, so redrawing is what keeps it present; `4` is five times a second, `1` every tick |
+| `max-per-side` | 1–4096 | `256` | The most particles sent for any one side of the region, nearest first. A radius of 9 needs about 254 per side, so the default is untrimmed with room to spare |
+
+### What it looks like, and why
+
+The wall is the intersection of a sphere around the player with the boundary plane: **one block thick**, one
+particle in the centre of every block of that intersection.
+
+That one rule produces the behaviour you want without any extra logic — the sphere only reaches the plane when
+the player is within `radius` blocks of an edge, and the disc where they meet grows as the player approaches:
+
+```
+   nine blocks away            five blocks away          standing on the boundary
+
+        ..o..                      ooooo                      ooooooooooo
+       .ooo.                      ooooo                      ooooooooooo
+        .o.                       ooooo                      ooooooooooo
+```
+
+A player in the middle of their region sees nothing at all, because no boundary is in range. When two
+boundaries are in range — a corner — both walls are drawn and meet at the corner.
+
+The wall stands on the **first block the region does not own**: for the west example, `x = 0` on the eastern
+side, and `x = -100001` on the western side. So it is always one step ahead of a player walking towards it. One
+consequence worth knowing: where a region's edge is also the world border, the wall is drawn one block outside
+it, marking the limit rather than the crossable line.
+
+### Cost
+
+About 254 particles per visible side at the default radius, at most four sides, five times a second — under a
+thousand particles a second for a player standing on a corner, and nothing for anyone else. `max-per-side`
+bounds the worst case; `interval-ticks` bounds the frequency; `enabled: false` removes it entirely and changes
+nothing else.
+
+In game, `/opendonut border` reports what the wall looks like from where the player is standing — the particle
+count and the distance to each side — which is the quickest way to confirm it is working or to tune the radius.
+
+---
+
 ## Seeds
 
 ```yaml
