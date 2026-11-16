@@ -6,7 +6,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -495,20 +494,110 @@ public final class BridgeCodec {
 	/**
 	 * Renders a frame's header for logs, without decoding the body.
 	 *
+	 * <h2>Why this is fussy about unprintable bytes</h2>
+	 * This method exists to make a transport failure diagnosable from one log line, so it must never render a
+	 * payload that is <em>not</em> a frame as if it were one. An earlier revision printed the first four bytes
+	 * as ASCII unconditionally, so a payload that had been wrapped in a length prefix appeared in the log as
+	 * {@code ���OD v78 type#84} — which is technically the truth and completely unreadable. Non-magic frames are
+	 * now shown as hex, and a payload that carries a valid frame behind a VarInt length prefix is called out
+	 * explicitly, because that exact mistake has been made here once already.
+	 *
 	 * @param frame the frame, may be {@code null}
-	 * @return a short description such as {@code ODNT v1 TRANSFER_REQUEST 148 bytes}
+	 * @return a short description, such as {@code ODNT v1 TRANSFER_REQUEST 148 bytes} or
+	 *         {@code not an OpenDonut frame: first bytes 86 01 4F 44 …}
 	 */
 	public static String describeFrame(byte[] frame) {
 		if (frame == null) {
 			return "(null frame)";
 		}
-		if (frame.length < HEADER_LENGTH) {
-			return frame.length + " bytes (shorter than a header)";
+		if (frame.length < MAGIC.length) {
+			return frame.length + " byte(s), shorter than the " + MAGIC.length + "-byte magic";
 		}
-		String magic = new String(frame, 0, MAGIC.length, StandardCharsets.US_ASCII);
+
+		if (!startsWithMagic(frame)) {
+			return "not an OpenDonut frame: first bytes " + toHex(frame, Math.min(8, frame.length))
+					+ lengthPrefixHint(frame);
+		}
+
+		if (frame.length < HEADER_LENGTH) {
+			return "ODNT followed by " + (frame.length - MAGIC.length)
+					+ " byte(s), too few for a header";
+		}
+
 		String type = MessageType.byWireId(frame[5] & 0xFF)
 				.map(MessageType::name)
 				.orElse("type#" + (frame[5] & 0xFF));
-		return magic + " v" + (frame[4] & 0xFF) + " " + type + " " + frame.length + " bytes";
+		return "ODNT v" + (frame[4] & 0xFF) + " " + type + " " + frame.length + " bytes";
+	}
+
+	/**
+	 * Renders bytes as space separated hex.
+	 *
+	 * @param bytes the bytes
+	 * @param length how many to render
+	 * @return the hex text
+	 */
+	private static String toHex(byte[] bytes, int length) {
+		StringBuilder out = new StringBuilder(length * 3);
+		for (int i = 0; i < length; i++) {
+			if (i > 0) {
+				out.append(' ');
+			}
+			out.append(Character.forDigit((bytes[i] >> 4) & 0xF, 16))
+					.append(Character.forDigit(bytes[i] & 0xF, 16));
+		}
+		if (bytes.length > length) {
+			out.append(" …");
+		}
+		return out.toString();
+	}
+
+	/**
+	 * Recognises a frame that has been wrapped in a VarInt length prefix, and explains the mistake.
+	 *
+	 * <p>The check is: read a VarInt at offset 0, then look for the magic immediately after it. A peer that
+	 * does that is adding its own length to a field that the Minecraft packet already delimits, which puts
+	 * every frame out of alignment and produces exactly one symptom — {@link DecodeFailure#BAD_MAGIC} — no
+	 * matter how correct the secret and the channel are.
+	 *
+	 * @param frame a frame that failed the magic check
+	 * @return an explanatory suffix, or an empty string when the payload does not look length-prefixed
+	 */
+	private static String lengthPrefixHint(byte[] frame) {
+		int offset = 0;
+		long declaredLength = 0L;
+		int shift = 0;
+		while (offset < frame.length && offset < 5) {
+			int value = frame[offset] & 0xFF;
+			declaredLength |= (long) (value & 0x7F) << shift;
+			offset++;
+			if ((value & 0x80) == 0) {
+				break;
+			}
+			shift += 7;
+		}
+		if (offset == 0 || offset > 5 || frame.length - offset < MAGIC.length
+				|| !startsWithMagicAt(frame, offset)) {
+			return "";
+		}
+		return "; it looks like a VarInt length prefix (" + declaredLength + " byte(s)) in front of a valid "
+				+ "frame. The Minecraft payload field already delimits the frame, so it must be written "
+				+ "verbatim — see the framing contract in the bridge payload codec.";
+	}
+
+	/**
+	 * Tests for the magic bytes at an offset.
+	 *
+	 * @param frame the payload
+	 * @param offset where to look
+	 * @return {@code true} if the magic is there
+	 */
+	private static boolean startsWithMagicAt(byte[] frame, int offset) {
+		for (int i = 0; i < MAGIC.length; i++) {
+			if (frame[offset + i] != MAGIC[i]) {
+				return false;
+			}
+		}
+		return true;
 	}
 }

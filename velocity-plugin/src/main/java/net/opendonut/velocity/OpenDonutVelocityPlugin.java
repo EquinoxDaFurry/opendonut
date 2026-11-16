@@ -226,7 +226,7 @@ public final class OpenDonutVelocityPlugin {
 		routing = new ProxyRoutingTable(candidate);
 
 		if (candidate.bridge().enabled()) {
-			registerChannel(candidate.bridge().channel());
+			registerChannel(candidate.bridge());
 			server.getChannelRegistrar().register(channel);
 		}
 		if (candidate.proxy().autoRegisterBackends()) {
@@ -244,13 +244,14 @@ public final class OpenDonutVelocityPlugin {
 	 * <p>Velocity must be told about the channel, otherwise our traffic would be forwarded to the client
 	 * untouched — and a client that does not know the channel can be disconnected for it.
 	 *
-	 * @param channelName the channel in {@code namespace:path} form
+	 * <p>The namespace and path come from {@link net.opendonut.common.model.BridgeSettings}, which is also what
+	 * the Fabric backend uses to build its payload type. Splitting the channel by hand here as well would be a
+	 * second implementation of the same rule, and the two would eventually disagree.
+	 *
+	 * @param settings the bridge settings holding the channel
 	 */
-	private void registerChannel(String channelName) {
-		int separator = channelName.indexOf(':');
-		String namespace = channelName.substring(0, separator);
-		String path = channelName.substring(separator + 1);
-		channel = MinecraftChannelIdentifier.create(namespace, path);
+	private void registerChannel(net.opendonut.common.model.BridgeSettings settings) {
+		channel = MinecraftChannelIdentifier.create(settings.channelNamespace(), settings.channelPath());
 	}
 
 	/**

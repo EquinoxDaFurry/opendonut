@@ -135,7 +135,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	public static Optional<OpenDonutBackend> create(
 			MinecraftServer server, Path configDirectory, Logger logger, boolean verbose) {
 
-		Path configPath = resolveConfigPath(configDirectory);
+		Path configPath = configPathFor(configDirectory);
 		ConfigLoadResult loaded = ConfigLoader.load(configPath);
 
 		if (!loaded.isUsable()) {
@@ -203,7 +203,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 * @param configDirectory the game's config directory
 	 * @return the file to load
 	 */
-	private static Path resolveConfigPath(Path configDirectory) {
+	public static Path configPathFor(Path configDirectory) {
 		String override = System.getProperty("opendonut.config");
 		if (override != null && !override.isBlank()) {
 			return Path.of(override);
@@ -387,6 +387,18 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		if (!config.bridge().enabled()) {
 			startupFindings.add("bridge.enabled is false, so this server will never transfer a player. "
 					+ "The coordinate system cannot behave as one world without the bridge.");
+			return;
+		}
+
+		// The payload type was registered during mod initialisation, before this configuration was loaded, so
+		// the two can disagree if bridge.channel was edited between mod load and server start. They must not:
+		// the proxy listens on the configured channel, and this backend would be speaking on a different one.
+		String registeredChannel = BridgePayload.channelName();
+		if (!registeredChannel.equals(config.bridge().channel())) {
+			startupFindings.add("the bridge payload type was registered on channel '" + registeredChannel
+					+ "' when the mod loaded, but the configuration now says '" + config.bridge().channel()
+					+ "'. Fabric requires payload types to be registered before any player can connect, so "
+					+ "bridge.channel can only be changed in a restart. Transfers are disabled until then.");
 			return;
 		}
 
@@ -968,6 +980,6 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 * @return {@code true} when the file is present
 	 */
 	public static boolean configurationExists(Path configDirectory) {
-		return Files.exists(resolveConfigPath(configDirectory));
+		return Files.exists(configPathFor(configDirectory));
 	}
 }

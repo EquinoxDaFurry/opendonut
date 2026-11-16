@@ -286,6 +286,75 @@ class BridgeCodecTest {
 			assertTrue(description.contains("HELLO_ACK"), description);
 			assertTrue(description.contains("v1"), description);
 		}
+	}
+
+	@Nested
+	@DisplayName("diagnostics for payloads that are not frames")
+	class Diagnostics {
+
+		@Test
+		@DisplayName("a payload from another protocol is shown as hex, not as mangled text")
+		void foreignPayloadIsShownAsHex() {
+			// A payload that is not a frame must never be rendered as if it were one. The earlier revision
+			// printed the first four bytes as ASCII and produced '���OD v78 type#84' in the log, which is the
+			// truth and completely unreadable.
+			byte[] foreign = {(byte) 0x86, 0x01, 0x7B, 0x22, 0x0A, 0x00};
+			String description = BridgeCodec.describeFrame(foreign);
+			assertTrue(description.contains("not an OpenDonut frame"), description);
+			assertTrue(description.contains("86 01 7b 22"), description);
+			assertFalse(description.contains("v" + 6), "it must not claim a protocol version: " + description);
+		}
+
+		@Test
+		@DisplayName("a frame behind a VarInt length prefix is named as such")
+		void lengthPrefixedFrameIsDiagnosed() {
+			// This is the exact shape of the production incident: the payload field contained
+			// [VarInt length][ODNT...], so every message was refused with BAD_MAGIC and the log said nothing
+			// about why.
+			byte[] frame = BridgeCodec.encode(new BridgeMessage.HelloAck("west", true, "ok", 1L), SECRET, NOW,
+					BridgeCodec.randomNonce());
+			byte[] prefixed = varIntPrefixed(frame);
+
+			BridgeDecodeResult result = BridgeCodec.decode(prefixed, SECRET, NOW, 30, new NonceCache());
+			assertEquals(DecodeFailure.BAD_MAGIC, ((BridgeDecodeResult.Failed) result).failure());
+
+			String description = BridgeCodec.describeFrame(prefixed);
+			assertTrue(description.contains("not an OpenDonut frame"), description);
+			assertTrue(description.contains("4f 44 4e 54"), "the frame's magic should be visible in the hex");
+			assertTrue(description.contains("length prefix"), description);
+			assertTrue(description.contains(String.valueOf(frame.length)),
+					"the hint should name the declared length: " + description);
+		}
+
+		@Test
+		@DisplayName("a payload too short to be a frame is described, not guessed at")
+		void shortPayloads() {
+			assertTrue(BridgeCodec.describeFrame(null).contains("null"));
+			assertTrue(BridgeCodec.describeFrame(new byte[0]).contains("shorter"));
+			assertTrue(BridgeCodec.describeFrame(new byte[] {'O', 'D'}).contains("shorter"));
+
+			// Correct magic, but not enough bytes for the fixed header.
+			String truncated = BridgeCodec.describeFrame(new byte[] {'O', 'D', 'N', 'T', 0x01});
+			assertTrue(truncated.contains("too few for a header"), truncated);
+		}
+
+		/**
+		 * Encodes a length prefix the way {@code FriendlyByteBuf.writeByteArray} does.
+		 *
+		 * @param frame the frame to wrap
+		 * @return the prefixed payload
+		 */
+		private static byte[] varIntPrefixed(byte[] frame) {
+			java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+			int remaining = frame.length;
+			while ((remaining & ~0x7F) != 0) {
+				out.write((remaining & 0x7F) | 0x80);
+				remaining >>>= 7;
+			}
+			out.write(remaining);
+			out.writeBytes(frame);
+			return out.toByteArray();
+		}
 
 		@Test
 		@DisplayName("encoding with an unusable secret is refused loudly")

@@ -229,6 +229,36 @@ offset  size  field
 10+N   32*1   HMAC-SHA256 over bytes 0 .. 10+N-1
 ```
 
+#### 6.2.1 The payload boundary — read this before touching the codec
+
+**A Minecraft custom-payload field carries the frame verbatim.** Byte 0 of the payload is byte 0 of the frame:
+no length prefix, no padding, nothing in front of it.
+
+This is the contract, not a preference, and it is worth understanding *why* before changing anything near it:
+
+* Velocity is a pure pass-through. `PluginMessagePacket.decode` is `readRetainedSlice(readableBytes())` and
+  `encode` is `writeBytes(...)`, so the bytes a backend sends arrive in a proxy plugin's
+  `PluginMessageEvent.getData()` unchanged, and the bytes a plugin passes to
+  `ServerConnection.sendPluginMessage` end up in the backend's payload field unchanged.
+* The payload field is **already length-delimited** by the packet that contains it. Adding another length is
+  not merely redundant: it shifts every byte, so the receiving side reads the length as the first magic byte.
+
+That second point is not hypothetical. An early revision of `BridgePayload` wrapped the frame in
+`FriendlyByteBuf.writeByteArray` — a VarInt length prefix — while the proxy handed the field over as-is. Every
+frame arrived as `[len][ODNT…]`, the proxy's magic check read the length instead of `'O'`, and **every transfer
+was refused with `BAD_MAGIC`**, a message that points at the magic bytes and says nothing about framing. The
+symptom was identical for both directions, because the same mismatch existed in both.
+
+Two things now guard against a repeat:
+
+1. `BridgePayload.CODEC` writes and reads the frame with no wrapper, and `BridgePayloadCodecTest` asserts
+   against the real Minecraft buffer classes that byte 0 of the payload is `'O'`;
+2. `BridgeCodec.describeFrame` renders a non-magic payload as **hex** and explicitly names a VarInt-prefixed
+   frame as the cause, so the next occurrence is one log line instead of a client session.
+
+`tools/verify-transport.ps1` proves the boundary end to end against Velocity's own packet class, without
+needing a client. Run it after any change to the payload codec or the Velocity dependency.
+
 Design notes:
 
 * **The signature is verified before a single payload byte is interpreted**, so unauthenticated input never

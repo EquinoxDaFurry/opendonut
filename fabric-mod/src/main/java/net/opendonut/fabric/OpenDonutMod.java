@@ -12,6 +12,9 @@ import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.opendonut.common.config.ConfigLoader;
+import net.opendonut.common.model.BridgeSettings;
+
 /**
  * The Fabric entrypoint: wiring, and nothing else.
  *
@@ -42,7 +45,10 @@ public final class OpenDonutMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		BridgePayload.register();
+		// The payload type must be registered before any player can connect, so the channel is read from the
+		// configuration here rather than when the server starts. A configuration that cannot be read at this
+		// point is not fatal: the default channel is used, and the normal startup path reports the real problem.
+		BridgePayload.register(configuredChannel());
 
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
 			Path configDirectory = FabricLoader.getInstance().getConfigDir();
@@ -98,7 +104,7 @@ public final class OpenDonutMod implements ModInitializer {
 			}
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(BridgePayload.TYPE, (payload, context) -> {
+		ServerPlayNetworking.registerGlobalReceiver(BridgePayload.payloadType(), (payload, context) -> {
 			if (backend == null) {
 				return;
 			}
@@ -112,6 +118,28 @@ public final class OpenDonutMod implements ModInitializer {
 				dispatcher.register(OpenDonutCommand.build(() -> backend)));
 
 		LOGGER.info("OpenDonut {} loaded; waiting for the server to start", version());
+	}
+
+	/**
+	 * The bridge channel from the configuration, or the documented default.
+	 *
+	 * <p>Read at mod initialisation because Fabric requires the payload type to be registered before players
+	 * can connect. Only the channel is needed here; the full configuration is loaded and validated when the
+	 * server starts, and a broken file is reported there with its findings.
+	 *
+	 * @return the channel from {@code bridge.channel}, or {@code opendonut:bridge}
+	 */
+	private static String configuredChannel() {
+		// The same path rule the backend uses, deliberately: two implementations of "where is the
+		// configuration" is how a component ends up reading a different file from the one an administrator
+		// edited.
+		Path configPath = OpenDonutBackend.configPathFor(FabricLoader.getInstance().getConfigDir());
+		// ConfigLoader never throws for a bad file: it reports findings and yields an empty model, which is
+		// exactly the case where the default channel is the right fallback.
+		return ConfigLoader.load(configPath)
+				.config()
+				.map(config -> config.bridge().channel())
+				.orElse(BridgeSettings.DEFAULT_CHANNEL);
 	}
 
 	/**

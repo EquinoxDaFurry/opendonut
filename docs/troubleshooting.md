@@ -130,6 +130,45 @@ The causes, in order of frequency:
 3. **Seed mismatch.** See below.
 4. **Wrong region.** The backend reports a rectangle the configuration does not give that id.
 
+## `BAD_MAGIC`: the proxy refuses every frame from a backend
+
+**Symptom:** the backend detects a boundary crossing and asks for a transfer, the proxy logs
+
+```
+OpenDonut: refused a bridge frame from backend 'west' claiming to be not an OpenDonut frame: first bytes
+86 01 4f 44 4e 54 …; it looks like a VarInt length prefix (137 byte(s)) in front of a valid frame. …
+(BAD_MAGIC)
+```
+
+and the backend gives up after `transfer.max-pending-seconds` and applies its failure policy.
+
+**This is a framing problem, not a secret problem.** The secret is only checked *after* the magic bytes, so a
+mismatched secret produces `BAD_SIGNATURE`, never `BAD_MAGIC`. A current build says so directly in the log:
+if the payload "looks like a VarInt length prefix in front of a valid frame", the sender is wrapping the frame
+in its own length.
+
+The payload field is already length-delimited by the Minecraft packet, so the frame must be written verbatim —
+byte 0 of the payload is byte 0 of the frame. Read
+[architecture.md § 6.2.1](architecture.md#621-the-payload-boundary--read-this-before-touching-the-codec) for the
+full reasoning. An early revision of the Fabric payload codec used `FriendlyByteBuf.writeByteArray`, which is
+exactly this mistake, and it broke every transfer in both directions.
+
+Diagnose it in one command, without needing a client:
+
+```bash
+./tools/verify-transport.ps1
+```
+
+It drives Velocity's own plugin-message packet in both directions and reports, per direction, whether the
+payload the receiver sees is byte-identical to the frame. `RESULT: PASS` means the boundary is consistent and
+the problem is elsewhere.
+
+If you are running a backend and a proxy built from *different revisions*, rebuild both from one revision:
+`./gradlew build`, then reinstall `fabric-mod/build/libs/opendonut-fabric-*.jar` and
+`velocity-plugin/build/libs/opendonut-velocity-*.jar`. A mixed pair is the other way to get a payload the
+receiver cannot parse, though it normally shows up as `MALFORMED_PAYLOAD` or `UNSUPPORTED_VERSION` rather than
+`BAD_MAGIC`.
+
 ## Transfers never happen, and nothing is logged
 
 The bridge needs a player to exist: plugin messages travel through a player's connection, so a backend cannot

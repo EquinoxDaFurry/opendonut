@@ -1,0 +1,27 @@
+[06:38:28] [main/INFO] [com.velocitypowered.proxy.VelocityServer]: Booting up Velocity 4.3.1...
+[06:38:28] [main/INFO] [com.velocitypowered.proxy.network.ConnectionManager]: Connections will use NIO channels, Java compression, Java ciphers
+[06:38:28] [main/INFO] [com.velocitypowered.proxy.VelocityServer]: Loading localizations...
+[06:38:29] [main/INFO] [com.velocitypowered.proxy.VelocityServer]: Loading plugins...
+[06:38:29] [main/INFO] [com.velocitypowered.proxy.plugin.VelocityPluginManager]: Loaded plugin opendonut 0.1.0-dev by OpenDonut contributors
+[06:38:29] [main/INFO] [com.velocitypowered.proxy.VelocityServer]: Loaded 2 plugins
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (world.border:25) world border is X=[-100000,100000) Z=[-100000,100000) (40000000000 blocks, 12500 x 12500 chunks)
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (transfer:45) transfer.max-pending-seconds (15) is larger than transfer.cooldown-seconds (5), so the pending timeout is what actually controls how often a failed transfer is retried
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers:53) coverage: 100.000% of the world border is assigned (40000000000 of 40000000000 blocks), using 2 lookup buckets
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[0]:53) region 'west' X=[-100000,0) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25566
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[1]:61) region 'east' X=[0,100000) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25567
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut: this platform has no POSIX permissions, so OpenDonut cannot verify that plugins\opendonut\secrets\bridge-secret.txt is private; make sure the folder is not shared
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut 26.3 is active: 2 region(s) of the world border, seed 8275902214569690041, channel opendonut:bridge, secret fingerprint 6488b4ac
+[06:38:29] [OpenDonut - Task Executor #0/INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
+[06:38:29] [Netty NIO Boss #0/INFO] [com.velocitypowered.proxy.network.ConnectionManager]: Listening on /[0:0:0:0:0:0:0:0]:25565
+[06:38:29] [main/INFO] [com.velocitypowered.proxy.Velocity]: Done (0.89s)!
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut] OpenDonut is active.
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   data directory : plugins\opendonut
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   world          : world, border center=(0,0) size=200000 X=[-100000,100000) Z=[-100000,100000)
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   seed           : 8275902214569690041  (level-seed=8275902214569690041 in every server.properties)
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   bridge         : channel opendonut:bridge, secret fingerprint 6488b4ac
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   regions        : 2 configured, 2 registered with the proxy
+[06:38:30] [OpenDonut - Task Executor #0/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: [OpenDonut]   backends       : 0 have announced themselves, 0 transfer(s) in flight
+[06:38:30] [main/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: CONSOLE -> executed command /opendonut status
+[06:39:02] [main/INFO] [com.velocitypowered.proxy.console.VelocityConsole]: CONSOLE -> executed command /stop
+[06:39:02] [Thread-0/INFO] [com.velocitypowered.proxy.VelocityServer]: Shutting down the proxy...
+[06:39:02] [Thread-0/INFO] [com.velocitypowered.proxy.network.ConnectionManager]: Closing endpoint /0.0.0.0:25565

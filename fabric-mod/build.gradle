@@ -41,6 +41,21 @@ dependencies {
 	// administrator having to install anything else.
 	include project(':common')
 	include "org.yaml:snakeyaml:${snakeyaml_version}"
+
+	// The payload codec is the boundary between the bridge protocol and Minecraft's packet format, and it
+	// has been wrong once already. It is tested directly against the real Minecraft buffer classes, which is
+	// possible because Loom puts Minecraft on the test class path too.
+	testImplementation platform("org.junit:junit-bom:${junit_version}")
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		events 'passed', 'failed', 'skipped'
+		exceptionFormat = 'full'
+	}
 }
 
 /**

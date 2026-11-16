@@ -1,6 +1,6 @@
 # Integration testing
 
-The unit test suite (`./gradlew test`, 207 tests) proves the configuration engine, the region lookup and the
+The unit test suite (`./gradlew test`, 216 tests) proves the configuration engine, the region lookup and the
 bridge protocol. It cannot prove that a player walking across a boundary arrives on the other server, because
 that needs a real client, a real proxy and two real Minecraft servers.
 
@@ -77,6 +77,15 @@ Then check by hand:
 
 ## The procedure
 
+0. **Check the transport first**, with no client and no servers running:
+
+   ```powershell
+   .\tools\verify-transport.ps1
+   ```
+
+   This proves the payload boundary carries frames verbatim in both directions, using Velocity's own packet
+   class. It is the check that was missing when every transfer failed with `BAD_MAGIC`; run it after any change
+   to the payload codec or the Velocity version.
 1. **Start the backends.** Then the proxy.
 2. **Connect** with a 26.3 client to `127.0.0.1:25565`.
 3. **Read the logs on both sides** before doing anything else: this is where a misconfiguration shows up, and
@@ -137,6 +146,8 @@ in [`results/`](results).
 
 | What was tested | Result |
 |---|---|
+| **Payload framing contract** (`tools/verify-transport.ps1`, Velocity's own packet class) | **Pass.** `backend -> proxy` and `proxy -> backend` are both byte-identical to the frame and are accepted; the length-prefixed framing that caused the `BAD_MAGIC` incident is rejected and named |
+| **Payload codec at the Minecraft layer** (`BridgePayloadCodecTest`) | **Pass.** Byte 0 of the encoded payload is `'O'`; a frame survives the boundary unchanged; an oversized payload is refused rather than allocated |
 | Mod loads on Minecraft 26.3 / Fabric Loader 0.20.1 | **Pass.** `opendonut 0.1.0-dev` with nested jars `net_opendonut_common` and `org_yaml_snakeyaml` |
 | Mod identifies its own server without a per-machine file | **Pass.** `this server is 'west' because it listens on port 25566`, and `'east'` on port 25567 |
 | Mod validates the configuration at startup | **Pass.** Coverage `100.000%`, 2 lookup buckets, both regions reported with their chunk counts |
@@ -149,7 +160,8 @@ in [`results/`](results).
 | Secret fingerprints match across all three processes | **Pass.** `6488b4ac` on both backends and on the proxy |
 | `/opendonut status`, `regions`, `seed`, `route <x> <z>` on the proxy | **Pass.** Routing answers match the backends'; the seed command printed the `level-seed=` line |
 | `check`/`route` CLI output matches the running components' answers | **Pass** |
-| **A player actually walking across the boundary** | **Not yet tested.** No Minecraft client was available in this environment. Items 5-11 of the checklist are unverified. |
+| **A player walking across the boundary, first attempt** | **Failed, diagnosed and fixed.** The client connected, Velocity placed the player on `west`, `west` detected the crossing and requested the transfer — and the proxy refused every frame with `BAD_MAGIC`. Cause: the Fabric payload codec wrapped the frame in a VarInt length prefix while Velocity passes the payload field through verbatim, so the magic bytes sat at offset 2. Fix and regression tests: see [architecture.md § 6.2.1](../docs/architecture.md#621-the-payload-boundary--read-this-before-touching-the-codec); evidence in `results/2026-11-17-BAD_MAGIC-incident-proxy.log`. |
+| **A player walking across the boundary, after the fix** | **Not yet re-tested.** The boundary is now proven consistent at the byte level in both directions, but the traversal itself still needs a client. Items 5-11 of the checklist remain unverified. |
 | Velocity booting from the workspace path | **Fail, diagnosed.** `ProviderNotFoundException: Provider "jar" not found`; the cause is a path containing both a space and `!`. Works from a plain path. See [troubleshooting.md](../docs/troubleshooting.md#velocity-fails-to-start-with-providernotfoundexception-provider-jar-not-found) |
 
 ### Honest summary
