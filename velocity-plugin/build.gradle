@@ -1,0 +1,68 @@
+/*
+ * velocity-plugin — the proxy integration.
+ *
+ * Velocity loads a plugin from a single jar and does not support nested jars, so `common` and
+ * SnakeYAML are shaded into the plugin jar and SnakeYAML is relocated to keep it from colliding with
+ * whatever else a proxy administrator has installed.
+ *
+ * The velocity-api annotation processor generates `velocity-plugin.json` from the @Plugin
+ * annotation, which is why velocity-api is on the annotationProcessor path as well as compileOnly.
+ */
+
+plugins {
+	id 'java'
+	id 'com.gradleup.shadow' version '9.6.1'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(providers.gradleProperty('java_version').get() as int)
+	}
+	withSourcesJar()
+}
+
+dependencies {
+	// Velocity provides the API at runtime; it must not be bundled.
+	compileOnly "com.velocitypowered:velocity-api:${velocity_api_version}"
+	annotationProcessor "com.velocitypowered:velocity-api:${velocity_api_version}"
+
+	implementation project(':common')
+
+	testImplementation platform("org.junit:junit-bom:${junit_version}")
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		events 'passed', 'failed', 'skipped'
+		exceptionFormat = 'full'
+	}
+	systemProperty 'opendonut.repoRoot', rootProject.projectDir.absolutePath
+}
+
+tasks.named('shadowJar') {
+	archiveBaseName = 'opendonut-velocity'
+	archiveClassifier = ''
+	// SnakeYAML is relocated so that a proxy running other plugins which bundle a different
+	// SnakeYAML version cannot break OpenDonut (or be broken by it).
+	relocate 'org.yaml.snakeyaml', 'net.opendonut.libs.snakeyaml'
+	mergeServiceFiles()
+	exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+}
+
+// The shaded jar is the artifact people install, so make a plain `build` produce it and make the
+// unshaded jar's classifier explicit so the two can never be confused in build/libs.
+tasks.named('jar') {
+	archiveBaseName = 'opendonut-velocity'
+	archiveClassifier = 'plain'
+}
+
+tasks.named('build') {
+	dependsOn 'shadowJar'
+}
+
+tasks.named('assemble') {
+	dependsOn 'shadowJar'
+}

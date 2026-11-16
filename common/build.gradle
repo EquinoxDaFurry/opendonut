@@ -1,0 +1,87 @@
+/*
+ * common — the Minecraft-free core of OpenDonut.
+ *
+ * Responsibilities:
+ *   - configuration models, YAML parsing, validation
+ *   - global coordinate / region models and the region lookup engine
+ *   - seed resolution and persistence
+ *   - the authenticated backend <-> proxy bridge protocol
+ *
+ * This module must never reference Minecraft, Fabric or Velocity classes: it is
+ * loaded by both the Fabric mod and the Velocity plugin, and it must also run as
+ * a plain Java command line tool for administrators.
+ */
+
+plugins {
+	id 'java-library'
+	id 'maven-publish'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(providers.gradleProperty('java_version').get() as int)
+	}
+	withSourcesJar()
+}
+
+dependencies {
+	// YAML parsing. `api` because the loader types appear in the public API of
+	// ConfigLoader, and consumers (fabric-mod) shade this into their own jar.
+	api "org.yaml:snakeyaml:${providers.gradleProperty('snakeyaml_version').get()}"
+
+	testImplementation platform("org.junit:junit-bom:${providers.gradleProperty('junit_version').get()}")
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		events 'passed', 'failed', 'skipped'
+		exceptionFormat = 'full'
+		showStandardStreams = false
+	}
+	// The region engine tests include randomised consistency checks; keep them
+	// deterministic by fixing the seeds inside the tests, not here.
+	//
+	// The repository root is passed in so that a test can load the configurations
+	// that ship with the project and prove they are valid. That matters: the
+	// examples are documentation, and documentation that does not parse is worse
+	// than none.
+	systemProperty 'opendonut.repoRoot', rootProject.projectDir.absolutePath
+}
+
+/**
+ * Self-contained command line tool jar.
+ *
+ * Bundles SnakeYAML so administrators can validate a configuration with a single
+ * `java -jar` invocation, without provisioning extra jars on the machine:
+ *
+ *   java -jar build/libs/opendonut-tools-<version>.jar check config/opendonut.yml
+ */
+tasks.register('toolsJar', Jar) {
+	group = 'build'
+	description = 'Builds a self-contained OpenDonut CLI jar (configuration engine only).'
+	archiveBaseName = 'opendonut-tools'
+	archiveClassifier = ''
+	destinationDirectory = layout.buildDirectory.dir('libs')
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	manifest {
+		attributes(
+			'Main-Class': 'net.opendonut.common.cli.Main',
+			'Implementation-Title': 'OpenDonut tools',
+			'Implementation-Version': project.version
+		)
+	}
+
+	from sourceSets.main.output
+	from {
+		configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+	}
+	exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/MANIFEST.MF', 'module-info.class'
+}
+
+tasks.named('assemble') {
+	dependsOn 'toolsJar'
+}

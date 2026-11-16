@@ -1,0 +1,29 @@
+/*
+ * OpenDonut — a seamless multi-server Minecraft world system.
+ *
+ * Gradle multi-project build:
+ *   common          — pure-Java configuration, region and bridge engine (no Minecraft classes)
+ *   fabric-mod      — Minecraft 26.3 backend integration (Fabric)
+ *   velocity-plugin — Velocity proxy integration
+ */
+
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		maven {
+			name = 'PaperMC'
+			url = 'https://repo.papermc.io/repository/maven-public/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'OpenDonut'
+
+include 'common'
+include 'fabric-mod'
+include 'velocity-plugin'

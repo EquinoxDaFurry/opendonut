@@ -1,0 +1,437 @@
+package net.opendonut.common.config;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import net.opendonut.common.model.OpenDonutConfig;
+import net.opendonut.common.model.TransferFailurePolicy;
+import net.opendonut.common.model.UnknownFieldPolicy;
+import net.opendonut.common.model.UnassignedAreaPolicy;
+
+/**
+ * YAML parsing: the document structure, defaults, and the diagnostics for a document that is wrong.
+ *
+ * <p>The assertions are mostly about the <em>findings</em> rather than about a thrown exception, because
+ * that is the contract: a broken configuration produces a report an administrator can act on, and an
+ * unusable document returns an empty model instead of throwing.
+ */
+class ConfigLoaderTest {
+
+	/**
+	 * A minimal, valid document used as the base for the negative tests.
+	 */
+	private static final String VALID = """
+			config-version: 1
+			world:
+			  name: "world"
+			  seed: 12345
+			  border:
+			    center-x: 0
+			    center-z: 0
+			    size: 200000
+			servers:
+			  - id: west
+			    address: "127.0.0.1:25566"
+			    bounds:
+			      min-x: -100000
+			      max-x: 0
+			      min-z: -100000
+			      max-z: 100000
+			  - id: east
+			    address: "127.0.0.1:25567"
+			    bounds:
+			      min-x: 0
+			      max-x: 100000
+			      min-z: -100000
+			      max-z: 100000
+			""";
+
+	private static ConfigLoadResult load(String yaml) {
+		return ConfigLoader.loadFromString(yaml, "test.yml");
+	}
+
+	@Nested
+	@DisplayName("a valid document")
+	class Valid {
+
+		@Test
+		@DisplayName("parses into a usable configuration")
+		void parses() {
+			ConfigLoadResult result = load(VALID);
+			assertTrue(result.isUsable(), () -> "expected a usable configuration but got:\n"
+					+ result.result().formatWithSummary());
+			OpenDonutConfig config = result.config().orElseThrow();
+			assertEquals("world", config.world().name());
+			assertEquals(12345L, config.world().seed().value());
+			assertEquals(2, config.servers().size());
+			assertEquals("west", config.servers().get(0).id());
+			assertEquals(25566, config.servers().get(0).address().port());
+			assertEquals(-100000, config.servers().get(0).bounds().minX());
+		}
+
+		@Test
+		@DisplayName("applies documented defaults for absent optional sections")
+		void defaults() {
+			OpenDonutConfig config = load(VALID).config().orElseThrow();
+			assertEquals(UnknownFieldPolicy.WARN, config.validation().unknownFields());
+			assertFalse(config.validation().requireFullCoverage());
+			assertTrue(config.validation().strictChunkAlignment());
+			assertTrue(config.bridge().enabled());
+			assertEquals("opendonut:bridge", config.bridge().channel());
+			assertEquals(30, config.bridge().timestampToleranceSeconds());
+			assertTrue(config.proxy().autoRegisterBackends());
+			assertTrue(config.proxy().requireBackendHello());
+			assertEquals(2, config.transfer().boundaryMarginBlocks());
+			assertEquals(40, config.transfer().joinGraceTicks());
+			assertEquals(TransferFailurePolicy.REVERT, config.transfer().onTransferFailure());
+			assertEquals(UnassignedAreaPolicy.ALLOW, config.transfer().unassignedAreaPolicy());
+			assertTrue(config.backend().autoDetect(), "no backend.server-id means auto-detection");
+		}
+
+		@Test
+		@DisplayName("reads the optional sections when they are present")
+		void optionalSections() {
+			String yaml = VALID + """
+					validation:
+					  require-full-coverage: true
+					  unknown-fields: error
+					bridge:
+					  enabled: false
+					  channel: "example:chan"
+					  secret-file: "/etc/opendonut/secret"
+					  timestamp-tolerance-seconds: 60
+					proxy:
+					  auto-register-backends: false
+					  require-backend-hello: false
+					  disconnect-unrouted-players: true
+					transfer:
+					  boundary-margin-blocks: 8
+					  join-grace-ticks: 0
+					  cooldown-seconds: 1
+					  max-pending-seconds: 2
+					  on-transfer-failure: log-only
+					  unassigned-area-policy: return
+					backend:
+					  server-id: east
+					""";
+			ConfigLoadResult result = load(yaml);
+			assertTrue(result.isUsable(), () -> result.result().formatWithSummary());
+			OpenDonutConfig config = result.config().orElseThrow();
+
+			assertTrue(config.validation().requireFullCoverage());
+			assertEquals(UnknownFieldPolicy.ERROR, config.validation().unknownFields());
+			assertFalse(config.bridge().enabled());
+			assertEquals("example", config.bridge().channelNamespace());
+			assertEquals("chan", config.bridge().channelPath());
+			assertEquals(60, config.bridge().timestampToleranceSeconds());
+			assertFalse(config.proxy().autoRegisterBackends());
+			assertTrue(config.proxy().disconnectUnroutedPlayers());
+			assertEquals(8, config.transfer().boundaryMarginBlocks());
+			assertEquals(TransferFailurePolicy.LOG_ONLY, config.transfer().onTransferFailure());
+			assertEquals(UnassignedAreaPolicy.RETURN, config.transfer().unassignedAreaPolicy());
+			assertEquals("east", config.backend().serverId().orElseThrow());
+		}
+
+		@Test
+		@DisplayName("accepts 'random' as a seed and hexadecimal seeds")
+		void seedForms() {
+			assertFalse(load(VALID.replace("seed: 12345", "seed: random")).config().orElseThrow()
+					.world().seed().explicit());
+			assertEquals(255L, load(VALID.replace("seed: 12345", "seed: 0xFF")).config().orElseThrow()
+					.world().seed().value());
+			assertEquals(-5L, load(VALID.replace("seed: 12345", "seed: -5")).config().orElseThrow()
+					.world().seed().value());
+		}
+
+		@Test
+		@DisplayName("a missing config-version is accepted and defaults to the current schema")
+		void versionIsOptional() {
+			assertTrue(load(VALID.replace("config-version: 1", "")).isUsable());
+		}
+	}
+
+	@Nested
+	@DisplayName("a broken document")
+	class Broken {
+
+		@Test
+		@DisplayName("an empty document is reported, not thrown")
+		void emptyDocument() {
+			ConfigLoadResult result = load("   \n# only a comment\n");
+			assertTrue(result.result().contains(IssueCode.FILE_EMPTY));
+			assertTrue(result.config().isEmpty());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("a YAML syntax error names the line")
+		void syntaxError() {
+			// A tab used for indentation is a classic YAML mistake and is rejected by the parser.
+			ConfigLoadResult result = load("world:\n\tname: broken\n");
+			assertTrue(result.result().contains(IssueCode.YAML_INVALID),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.result().errors().get(0).line() > 0, "the finding must carry a line number");
+		}
+
+		@Test
+		@DisplayName("a duplicate key is reported with its path")
+		void duplicateKey() {
+			ConfigLoadResult result = load(VALID.replace("  seed: 12345", "  seed: 12345\n  seed: 999"));
+			assertTrue(result.result().contains(IssueCode.YAML_DUPLICATE_KEY),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("a missing world section is fatal and specific")
+		void missingWorld() {
+			ConfigLoadResult result = load(VALID.replaceAll("(?m)^world:.*(\\R  .*)*", ""));
+			assertTrue(result.result().contains(IssueCode.MISSING_FIELD));
+			assertTrue(result.config().isEmpty());
+		}
+
+		@Test
+		@DisplayName("a missing required value names the key")
+		void missingValue() {
+			ConfigLoadResult result = load(VALID.replace("    size: 200000", ""));
+			assertTrue(result.result().contains(IssueCode.MISSING_FIELD),
+					() -> result.result().formatWithSummary());
+			ValidationIssue issue = result.result().errors().stream()
+					.filter(candidate -> candidate.code() == IssueCode.MISSING_FIELD)
+					.findFirst().orElseThrow();
+			assertEquals("world.border.size", issue.path());
+			assertTrue(issue.line() > 0);
+		}
+
+		@Test
+		@DisplayName("a value of the wrong type names the key and the value")
+		void wrongType() {
+			ConfigLoadResult result = load(VALID.replace("      max-x: 0", "      max-x: east"));
+			assertTrue(result.result().contains(IssueCode.INVALID_TYPE),
+					() -> result.result().formatWithSummary());
+			ValidationIssue issue = result.result().errors().stream()
+					.filter(candidate -> candidate.code() == IssueCode.INVALID_TYPE)
+					.findFirst().orElseThrow();
+			assertEquals("servers[0].bounds.max-x", issue.path());
+			assertTrue(issue.message().contains("east"), "the message should quote the offending value");
+		}
+
+		@Test
+		@DisplayName("an unparsable address is reported with the parser's own explanation")
+		void invalidAddress() {
+			ConfigLoadResult result = load(VALID.replace("\"127.0.0.1:25566\"", "\"127.0.0.1\""));
+			assertTrue(result.result().contains(IssueCode.ADDRESS_INVALID),
+					() -> result.result().formatWithSummary());
+			ValidationIssue issue = result.result().errors().stream()
+					.filter(candidate -> candidate.code() == IssueCode.ADDRESS_INVALID)
+					.findFirst().orElseThrow();
+			assertTrue(issue.message().contains("port"), issue.message());
+		}
+
+		@Test
+		@DisplayName("an unusable server id is rejected")
+		void invalidServerId() {
+			ConfigLoadResult result = load(VALID.replace("  - id: west", "  - id: \"has space\""));
+			assertTrue(result.result().contains(IssueCode.SERVER_ID_INVALID),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("an inverted region is rejected with an explanation")
+		void invertedBounds() {
+			ConfigLoadResult result = load(VALID.replace("      min-x: -100000", "      min-x: 50000"));
+			assertTrue(result.result().contains(IssueCode.BOUNDS_INVALID),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("a future config-version is refused rather than misread")
+		void futureVersion() {
+			ConfigLoadResult result = load(VALID.replace("config-version: 1", "config-version: 99"));
+			assertTrue(result.result().contains(IssueCode.UNSUPPORTED_CONFIG_VERSION),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.config().isEmpty());
+		}
+
+		@Test
+		@DisplayName("an invalid enum value lists the accepted spellings")
+		void invalidEnum() {
+			ConfigLoadResult result = load(VALID + "transfer:\n  on-transfer-failure: explode\n");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE));
+			ValidationIssue issue = result.result().errors().stream()
+					.filter(candidate -> candidate.path().equals("transfer.on-transfer-failure"))
+					.findFirst().orElseThrow();
+			assertTrue(issue.message().contains("revert"), issue.message());
+		}
+
+		@Test
+		@DisplayName("an out-of-range value is rejected by the model's own validation")
+		void outOfRange() {
+			ConfigLoadResult result = load(VALID + "bridge:\n  timestamp-tolerance-seconds: 100000\n");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("an empty servers list is reported as a fatal finding")
+		void noServers() {
+			ConfigLoadResult result = load("""
+					world:
+					  name: world
+					  seed: 1
+					  border:
+					    size: 16
+					servers: []
+					""");
+			assertTrue(result.result().contains(IssueCode.NO_SERVERS),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("several problems are all reported in one pass")
+		void reportsEveryProblem() {
+			String yaml = VALID
+					.replace("  seed: 12345", "  seed: not-a-seed")
+					.replace("\"127.0.0.1:25566\"", "\"nope\"")
+					.replace("      max-z: 100000\n  - id: east".replace("\n", "\n"), "      max-z: 100000\n  - id: east");
+			ConfigLoadResult result = load(yaml);
+			assertTrue(result.result().count(Severity.ERROR) >= 2,
+					() -> "expected at least two errors, got:\n" + result.result().formatWithSummary());
+		}
+	}
+
+	@Nested
+	@DisplayName("unknown keys")
+	class UnknownKeys {
+
+		@Test
+		@DisplayName("are warnings by default, and the suggestion names the intended key")
+		void warnsByDefault() {
+			// A misspelled key fails in two distinct ways, and both are reported: the unrecognised name,
+			// and the required value that never arrived. That pairing is what makes a typo obvious.
+			ConfigLoadResult result = load(VALID.replace("      max-x: 0", "      max_x: 0"));
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD, Severity.WARNING),
+					() -> result.result().formatWithSummary());
+			ValidationIssue issue = result.result().warnings().stream()
+					.filter(candidate -> candidate.code() == IssueCode.UNKNOWN_FIELD)
+					.findFirst().orElseThrow();
+			assertEquals("servers[0].bounds.max_x", issue.path());
+			assertTrue(issue.message().contains("max-x"), "must suggest the intended key: " + issue.message());
+			assertTrue(result.result().contains(IssueCode.MISSING_FIELD, Severity.ERROR),
+					"the value the typo replaced is also reported as missing");
+		}
+
+		@Test
+		@DisplayName("an extra key that replaces nothing is only a warning")
+		void extraKeyDoesNotBreakTheConfiguration() {
+			ConfigLoadResult result = load(VALID.replace("      max-x: 0",
+					"      max-x: 0\n      chunk-size: 16"));
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD, Severity.WARNING),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.isUsable(), () -> "an unrecognised extra key must not stop the server:\n"
+					+ result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("can be ignored")
+		void canBeIgnored() {
+			ConfigLoadResult result = load(VALID + "validation:\n  unknown-fields: ignore\n");
+			assertFalse(result.result().contains(IssueCode.UNKNOWN_FIELD),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("can be made fatal")
+		void canBeFatal() {
+			ConfigLoadResult result = load(VALID + "validation:\n  unknown-fields: error\n"
+					+ "surprise: true\n");
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD, Severity.ERROR),
+					() -> result.result().formatWithSummary());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("the policy itself is read before the rest of the document is checked")
+		void policyAppliesToTheWholeDocument() {
+			// The unknown key is in a section that is parsed before `validation` in the file, proving the
+			// policy is not order dependent.
+			String yaml = VALID.replace("config-version: 1", "config-version: 1\nmystery: 1")
+					+ "validation:\n  unknown-fields: error\n";
+			assertTrue(load(yaml).result().contains(IssueCode.UNKNOWN_FIELD, Severity.ERROR));
+		}
+	}
+
+	@Nested
+	@DisplayName("finding order and formatting")
+	class Reporting {
+
+		@Test
+		@DisplayName("errors are listed before warnings and informational messages")
+		void severityOrdering() {
+			ConfigLoadResult result = load(VALID.replace("      max-x: 0", "      max_x: 0"));
+			Severity first = result.result().issues().get(0).severity();
+			Severity last = result.result().issues().get(result.result().issues().size() - 1).severity();
+			assertEquals(Severity.INFO, last, "informational messages come last");
+			assertTrue(first == Severity.ERROR || first == Severity.WARNING);
+			assertEquals(Severity.INFO, result.result().infos().get(0).severity());
+		}
+
+		@Test
+		@DisplayName("the same document always produces the same report")
+		void deterministic() {
+			String first = load(VALID).result().format();
+			String second = load(VALID).result().format();
+			assertEquals(first, second);
+		}
+
+		@Test
+		@DisplayName("a report is human readable and carries the summary counts")
+		void formatting() {
+			ConfigLoadResult result = load(VALID);
+			String report = result.result().formatWithSummary();
+			assertTrue(report.contains("error"), report);
+			assertTrue(report.contains("warning"), report);
+			assertTrue(report.contains("coverage"), "the derived coverage line should be present");
+		}
+
+		@Test
+		@DisplayName("requireUsable throws with the whole report attached")
+		void requireUsableReportsEverything() {
+			ConfigLoadResult result = load(VALID.replace("\"127.0.0.1:25566\"", "\"oops\""));
+			IllegalStateException e = org.junit.jupiter.api.Assertions.assertThrows(
+					IllegalStateException.class, result::requireUsable);
+			assertTrue(e.getMessage().contains("test.yml"), e.getMessage());
+			assertTrue(e.getMessage().contains("port"), e.getMessage());
+		}
+	}
+
+	@Nested
+	@DisplayName("file level errors")
+	class FileLevel {
+
+		@Test
+		@DisplayName("a missing file is reported with advice")
+		void missingFile() {
+			ConfigLoadResult result = ConfigLoader.load(java.nio.file.Path.of("does-not-exist-opendonut.yml"));
+			assertTrue(result.result().contains(IssueCode.FILE_NOT_FOUND));
+			assertTrue(result.config().isEmpty());
+			assertTrue(result.result().errors().get(0).message().contains("does not exist"));
+		}
+
+		@Test
+		@DisplayName("a directory is not a configuration file")
+		void directory() throws java.io.IOException {
+			java.nio.file.Path directory = java.nio.file.Files.createTempDirectory("opendonut-test");
+			try {
+				ConfigLoadResult result = ConfigLoader.load(directory);
+				assertTrue(result.result().contains(IssueCode.FILE_UNREADABLE));
+			} finally {
+				java.nio.file.Files.deleteIfExists(directory);
+			}
+		}
+	}
+}

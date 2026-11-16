@@ -1,0 +1,173 @@
+# Integration testing
+
+The unit test suite (`./gradlew test`, 207 tests) proves the configuration engine, the region lookup and the
+bridge protocol. It cannot prove that a player walking across a boundary arrives on the other server, because
+that needs a real client, a real proxy and two real Minecraft servers.
+
+This directory holds the procedure for that, the tooling to set it up, and the results that have actually been
+observed. **It is a manual procedure.** Nothing here is automated, and nothing here should be described as
+passing unless somebody ran it and watched what happened.
+
+```
+tests/
+├── README.md          this file: the procedure, the checklist, and observed results
+├── results/           captured logs from runs, one file per session
+└── runtime/           scratch space for downloads and a throwaway proxy (gitignored)
+```
+
+## What the test environment is
+
+Three Java processes, all on the local machine:
+
+| Process | Address | Software |
+|---|---|---|
+| Proxy | `127.0.0.1:25565` | Velocity 4.3.1 build 45 + the OpenDonut plugin |
+| Backend `west` | `127.0.0.1:25566` | Minecraft 26.3, Fabric Loader 0.20.1, Fabric API, FabricProxy-Lite 2.12.0, OpenDonut mod |
+| Backend `east` | `127.0.0.1:25567` | Same |
+
+The regions and the exact configuration used are in
+[`examples/two-servers/opendonut.yml`](../examples/two-servers/opendonut.yml):
+
+```
+west  X = [-100000, 0)        east  X = [0, 100000)
+both  Z = [-100000, 100000)   border 200000 x 200000 centred on the origin
+```
+
+Both backends must be generating the same world: same `level-name`, same `level-seed`, same world-generation
+settings. The mod checks the first two at startup and **disables transfers** if they disagree, which is the
+behaviour you want to see when something is wrong.
+
+### Requirements
+
+* Java 25 or newer for every process.
+* A Minecraft 26.3 client.
+* The proxy must run from a directory path that does not contain both a space and an `!` — see
+  [troubleshooting.md](../docs/troubleshooting.md#velocity-fails-to-start-with-providernotfoundexception-provider-jar-not-found).
+  This is a real limitation of Velocity 4.3.1, not of OpenDonut, and it is why the proxy runtime for this
+  workspace cannot live inside the workspace.
+
+### Setting it up
+
+```powershell
+# 1. Build
+.\gradlew.bat build
+
+# 2. A configuration with the seed your worlds were actually generated with
+copy examples\two-servers\opendonut.yml config\opendonut.yml
+java -jar common\build\libs\opendonut-tools-0.1.0-dev.jar check config\opendonut.yml
+java -jar common\build\libs\opendonut-tools-0.1.0-dev.jar seed  config\opendonut.yml
+
+# 3. The bridge secret (one file, copied to every process)
+java -jar common\build\libs\opendonut-tools-0.1.0-dev.jar secret config\secrets\bridge-secret.txt
+
+# 4. The proxy, in a plain directory
+.\tools\install-to-proxy.ps1   -ProxyDirectory "$env:LOCALAPPDATA\OpenDonut\velocity"
+
+# 5. The backends (backs up server.properties, never touches a world folder)
+.\tools\install-to-backend.ps1 -ServerDirectory 'E:\servers\Server1'
+.\tools\install-to-backend.ps1 -ServerDirectory 'E:\servers\Server2'
+```
+
+Then check by hand:
+
+* `level-name` matches `world.name`, and `level-seed` matches the resolved seed, on every backend;
+* `accepts-transfers=true` on every backend;
+* FabricProxy-Lite's own config in `config/FabricProxyLite.toml` holds the proxy's `forwarding.secret` value;
+* `velocity.toml` uses `player-info-forwarding-mode = "modern"`.
+
+## The procedure
+
+1. **Start the backends.** Then the proxy.
+2. **Connect** with a 26.3 client to `127.0.0.1:25565`.
+3. **Read the logs on both sides** before doing anything else: this is where a misconfiguration shows up, and
+   the transfer path is much easier to debug when you know the bridge is already working.
+4. **Walk the boundary** and watch the three logs.
+
+### Checklist
+
+Each item is something to observe, not something to assume.
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Backend startup | `this server is 'west' because it listens on port 25566`, `bridge ready ... secret fingerprint XXXX`, `boundary checks are active` |
+| 2 | Proxy startup | `OpenDonut ... is active: 2 region(s) ... seed ... secret fingerprint XXXX` — **the same fingerprint** as the backends |
+| 3 | `/opendonut regions` on the proxy | Two regions, each `[verified]` or `[no HELLO yet]` |
+| 4 | Compare `/opendonut route <x> <z>` on the proxy and on each backend, for a point on each side of the boundary | All three agree, per side |
+| 5 | Walk east from the middle of `west` past `x = 0` | `west` logs `left region 'west' (past max-x, N block(s) outside) ... asked the proxy to move them`; the proxy logs `moving <player> from 'west' to 'east' at global (...) because past max-x`; `east` logs `placed <player> at global (...)` |
+| 6 | Look at where the player actually is | Block coordinates within one block of where they crossed, on the other side |
+| 7 | Walk back west past `x = -1` | The mirror image of item 5 |
+| 8 | Walk along the boundary without crossing | **Nothing** in any log: no request, no teleport |
+| 9 | Stop `east`, walk into its region from `west` | The proxy refuses (`could not move ... SERVER_DISCONNECTED`), and `west` moves the player back inside its own region |
+| 10 | Restart the proxy while a player is online | The backend re-sends its `HELLO` on the next join; `/opendonut regions` shows `[verified]` again without restarting the backends |
+| 11 | Check the destination's chunks | Terrain around the arrival point matches what the source server had, because both use the same seed |
+
+Items 4, 5, 8 and 9 are the ones that matter most: they are the routing decision, the transfer itself, the
+anti-oscillation margin, and the failure policy.
+
+### What a boundary crossing should look like
+
+Backend `west`:
+
+```
+[INFO]: OpenDonut: alice left region 'west' (past max-x, 2 block(s) outside), which is owned by 'east'
+        (127.0.0.1:25567); asked the proxy to move them
+```
+
+Proxy:
+
+```
+[INFO]: [opendonut]: OpenDonut: moving alice from 'west' to 'east' at global (2, 64, -1180) because past max-x
+[INFO]: [opendonut]: OpenDonut: alice is now on 'east' (SUCCESS)
+```
+
+Backend `east`:
+
+```
+[INFO]: OpenDonut: placed alice at global (2, 64, -1180) after arriving from 'west'
+```
+
+If you see the first line and not the second, the proxy refused the transfer and said why. If you see the second
+and not the third, the placement did not reach the destination — check the secret fingerprints and the proxy
+log for a `refused a bridge frame`.
+
+## Results observed so far
+
+Recorded on 2026-11-17, Windows 11, Temurin 25.0.5, on the workspace's two existing backends. Captured logs are
+in [`results/`](results).
+
+| What was tested | Result |
+|---|---|
+| Mod loads on Minecraft 26.3 / Fabric Loader 0.20.1 | **Pass.** `opendonut 0.1.0-dev` with nested jars `net_opendonut_common` and `org_yaml_snakeyaml` |
+| Mod identifies its own server without a per-machine file | **Pass.** `this server is 'west' because it listens on port 25566`, and `'east'` on port 25567 |
+| Mod validates the configuration at startup | **Pass.** Coverage `100.000%`, 2 lookup buckets, both regions reported with their chunk counts |
+| Mod checks the world seed against the configuration | **Pass**, including the failure path: with a mismatched seed it logged the exact remedy and **disabled transfers** instead of routing players into terrain that does not match |
+| Mod's `accepts-transfers` check | **Pass.** Detected `accepts-transfers=false` before it was fixed |
+| `/opendonut`, `/opendonut region`, `/opendonut route <x> <z>` in game | **Pass.** The two backends answered oppositely for the shared edge — `(0,0)` is "this server" on `east` and "server 'east' ... is moved there" on `west` — and both reported `(100000, 0)` as unowned |
+| Proxy loads the plugin | **Pass.** `Loaded plugin opendonut 0.1.0-dev by OpenDonut contributors` |
+| Proxy validates the same configuration and resolves the seed | **Pass.** `OpenDonut 26.3 is active: 2 region(s) ..., seed 8275902214569690041, channel opendonut:bridge, secret fingerprint 6488b4ac` |
+| Proxy auto-registers the backends from the YAML | **Pass.** `regions: 2 configured, 2 registered with the proxy` |
+| Secret fingerprints match across all three processes | **Pass.** `6488b4ac` on both backends and on the proxy |
+| `/opendonut status`, `regions`, `seed`, `route <x> <z>` on the proxy | **Pass.** Routing answers match the backends'; the seed command printed the `level-seed=` line |
+| `check`/`route` CLI output matches the running components' answers | **Pass** |
+| **A player actually walking across the boundary** | **Not yet tested.** No Minecraft client was available in this environment. Items 5-11 of the checklist are unverified. |
+| Velocity booting from the workspace path | **Fail, diagnosed.** `ProviderNotFoundException: Provider "jar" not found`; the cause is a path containing both a space and `!`. Works from a plain path. See [troubleshooting.md](../docs/troubleshooting.md#velocity-fails-to-start-with-providernotfoundexception-provider-jar-not-found) |
+
+### Honest summary
+
+Everything up to the transfer itself has been verified on real servers: the mod loads and self-checks, the
+plugin loads and routes, the two sides agree, the secret is symmetric, and both sides answer coordinate queries
+correctly — including the failure paths, which were observed rather than reasoned about.
+
+The transfer path itself (checklist items 5-11) has **not** been exercised with a client. The code is written
+against the real APIs and reviewed, and the failure modes are handled and logged, but until somebody walks
+across a boundary on a real client, treat it as untested. That is the first thing to do next.
+
+## Keeping the results honest
+
+When you run the checklist:
+
+1. Save the three logs to `results/` with a date and a description, for example
+   `results/2026-11-17-boundary-crossing-west-to-east.log`.
+2. Update the table above with what you observed, including what failed.
+3. Do not record a check you did not perform. A short, accurate list is worth more than a complete-looking one —
+   the purpose of this file is to tell the next person what is actually safe to rely on.

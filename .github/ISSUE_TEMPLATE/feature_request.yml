@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest a capability, a configuration option, or a change to how something works.
+title: "[Feature]: "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please also read the "What is not synchronised" and "Deliberate non-goals" sections of
+        `docs/architecture.md`. Several large features are already discussed there with their reasoning, and
+        they are easier to talk about with that context.
+
+        A proposal that names the *problem* — and the observable behaviour that would show it was solved — is
+        much easier to act on than one that names a solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can you not do today? What does it force you to do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to happen
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Configuration and validation
+        - Region lookup and coordinate handling
+        - Transfers and routing
+        - World consistency (seed, worldgen, chunk data)
+        - Player data (inventory, health, experience)
+        - Proxy integration
+        - Backend integration
+        - Documentation
+        - Tooling and tests
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including "do nothing", and what breaks if this stays unimplemented.
+    validations:
+      required: false
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risks and compatibility
+      description: |
+        Does this change the configuration schema, the bridge protocol, or behaviour an existing deployment
+        depends on? Does it require a newer Minecraft, Java or Velocity?
+    validations:
+      required: false
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to work on this myself (with guidance on the design).
+          required: false

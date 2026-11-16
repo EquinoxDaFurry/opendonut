@@ -1,0 +1,65 @@
+# -----------------------------------------------------------------------------
+# OpenDonut — two servers, split on the X axis.
+#
+# Matches the layout the local integration environment uses:
+#
+#     Server1  127.0.0.1:25566   west   X = [-100000, 0)
+#     Server2  127.0.0.1:25567   east   X = [ 0,      100000)
+#     Velocity 127.0.0.1:25565
+#
+# The world border is 200000 x 200000 blocks centred on the origin, so both
+# regions together cover it exactly: no overlap, no unassigned block.
+#
+# Check it:  java -jar opendonut-tools.jar check opendonut.yml
+# Then:      java -jar opendonut-tools.jar route opendonut.yml -1 0    -> west
+#            java -jar opendonut-tools.jar route opendonut.yml  0 0    -> east
+# -----------------------------------------------------------------------------
+config-version: 1
+
+world:
+  name: "world"
+  seed: random
+  border:
+    center-x: 0
+    center-z: 0
+    size: 200000
+
+validation:
+  require-full-coverage: true
+  strict-chunk-alignment: true
+  unknown-fields: warn
+
+bridge:
+  enabled: true
+  channel: "opendonut:bridge"
+  secret-file: "secrets/bridge-secret.txt"
+  timestamp-tolerance-seconds: 30
+
+proxy:
+  auto-register-backends: true
+  require-backend-hello: true
+
+transfer:
+  boundary-margin-blocks: 2
+  join-grace-ticks: 40
+  cooldown-seconds: 5
+  max-pending-seconds: 15
+  on-transfer-failure: revert
+  unassigned-area-policy: allow
+
+servers:
+  - id: west
+    address: "127.0.0.1:25566"
+    bounds:
+      min-x: -100000
+      max-x: 0
+      min-z: -100000
+      max-z: 100000
+
+  - id: east
+    address: "127.0.0.1:25567"
+    bounds:
+      min-x: 0
+      max-x: 100000
+      min-z: -100000
+      max-z: 100000

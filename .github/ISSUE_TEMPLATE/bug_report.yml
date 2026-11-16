@@ -1,0 +1,92 @@
+name: Bug report
+description: Something behaves differently from what the documentation says it does.
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        Before filing: `docs/troubleshooting.md` covers seed mismatches, bridge secret mismatches, backends
+        rejected by the proxy, and players bouncing across a boundary. Those four account for most reports.
+
+        **Never paste your bridge secret or `forwarding.secret`.** The fingerprints the components log at
+        startup are the intended way to compare two machines.
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Before filing
+      options:
+        - label: I ran `java -jar opendonut-tools-0.1.0-dev.jar report opendonut.yml` and it exits with no errors.
+          required: true
+        - label: I have checked `docs/troubleshooting.md` for the symptom.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenDonut version
+      description: From `/opendonut` output, or the jar file name.
+      placeholder: "0.1.0-dev"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The full version matrix of your deployment.
+      value: |
+        - Java:
+        - Minecraft (backends):
+        - Fabric Loader:
+        - Fabric API:
+        - FabricProxy-Lite:
+        - Velocity:
+        - Number of backends:
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Describe the behaviour, and quote the exact log lines if there are any.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: A sequence of steps, including the coordinates and which server the player was on.
+      placeholder: |
+        1. Player stands on the west backend at (-1, 64, 0)
+        2. Walks east past x = 0
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: |
+        The `servers` list and `world` section from your `opendonut.yml`. Remove the `bridge.secret-file`
+        value or any hostname you would rather not publish; the region geometry is what matters.
+      render: yaml
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and command output
+      description: |
+        The `OpenDonut` lines from the proxy and from the affected backends, plus `/opendonut` and
+        `/opendonut route <x> <z>` output from both sides.
+      render: text
+    validations:
+      required: false

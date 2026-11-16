@@ -1,0 +1,196 @@
+# =============================================================================
+#  OpenDonut — central configuration
+# =============================================================================
+#
+#  One file describes the whole network. The Velocity proxy and every Fabric
+#  backend load the same document, which is why adding a server never requires
+#  changing any Java code: edit the `servers` list, copy the file, restart.
+#
+#  Validate before starting anything:
+#
+#      java -jar opendonut-tools-<version>.jar check opendonut.yml
+#      java -jar opendonut-tools-<version>.jar report opendonut.yml
+#      java -jar opendonut-tools-<version>.jar route opendonut.yml -1 0
+#
+#  Full reference: docs/configuration.md
+# =============================================================================
+
+config-version: 1
+
+# -----------------------------------------------------------------------------
+#  The shared world
+# -----------------------------------------------------------------------------
+world:
+  # The Minecraft level folder name. Every backend must use this exact name,
+  # otherwise the "same world" assumption behind global coordinates breaks.
+  # (server.properties: level-name)
+  name: "world"
+
+  # Either a number or the literal `random`.
+  #
+  #   random : the first component to start generates a seed and writes it to
+  #            seed.properties next to this file. Every later start — and every
+  #            other backend, once the file is copied there — reuses it. A new
+  #            seed is never generated as long as that file exists.
+  #   number : the value here wins over anything stored.
+  #
+  # Whichever form is used, put the resolved value into every backend's
+  # server.properties as `level-seed=<value>` BEFORE its world is created:
+  #
+  #      java -jar opendonut-tools-<version>.jar seed opendonut.yml
+  seed: random
+
+  border:
+    center-x: 0
+    center-z: 0
+    # Total edge length of the square border, in blocks.
+    #
+    # Must be a positive multiple of 16, and the centre must be a multiple of 16,
+    # so that the border edges fall on chunk boundaries. A border that is not
+    # chunk aligned forces every region inside it to be misaligned too, which
+    # means two servers would generate the same chunk.
+    size: 200000
+
+# -----------------------------------------------------------------------------
+#  Validation
+# -----------------------------------------------------------------------------
+validation:
+  # false : part of the border may be owned by no server. A warning is printed
+  #         with the exact unassigned rectangles, and players who walk into one
+  #         are handled by transfer.unassigned-area-policy.
+  # true  : every block inside the border must be owned; gaps are fatal.
+  #
+  # OpenDonut never refuses to start merely because a network is still being
+  # built out, so the default is false.
+  require-full-coverage: false
+
+  # Regions and the border must line up with 16-block chunks. Leave this true:
+  # turning it off only downgrades the finding to a warning, and a misaligned
+  # boundary means two servers write the same chunk.
+  strict-chunk-alignment: true
+
+  # What to do about unrecognised keys: ignore | warn | error
+  # `warn` is the default because a typo such as max_x for max-x otherwise
+  # silently produces a region that is not the one you meant.
+  unknown-fields: warn
+
+# -----------------------------------------------------------------------------
+#  Bridge (backend <-> proxy channel)
+# -----------------------------------------------------------------------------
+bridge:
+  enabled: true
+  # Plugin message channel. Change it only if it collides with another plugin.
+  channel: "opendonut:bridge"
+
+  # The shared secret that authenticates every bridge message. Resolved relative
+  # to this file's directory when not absolute.
+  #
+  # Player clients can send plugin messages on any channel, so without a secret a
+  # modified client could forge a transfer request. The secret is generated on
+  # first run, must be identical on the proxy and on every backend, and must
+  # never be committed to version control or pasted into chat.
+  #
+  #      java -jar opendonut-tools-<version>.jar secret secrets/bridge-secret.txt
+  secret-file: "secrets/bridge-secret.txt"
+
+  # How far a message timestamp may differ from the local clock. Entries outside
+  # this window are rejected, and the same window bounds the replay cache.
+  timestamp-tolerance-seconds: 30
+
+# -----------------------------------------------------------------------------
+#  Proxy behaviour (ignored by the backends)
+# -----------------------------------------------------------------------------
+proxy:
+  # Register the servers below with the proxy at startup, so velocity.toml does
+  # not have to list them. Names must not collide with servers already present
+  # in velocity.toml.
+  auto-register-backends: true
+
+  # Only route players to a backend that has sent a valid HELLO whose world name,
+  # seed and region match this file. Set to false only while bringing a new
+  # backend online, because it lets the proxy route to a backend that is
+  # generating different terrain.
+  require-backend-hello: true
+
+  # What to do with a player who is routed into a coordinate that no server owns.
+  # false (default): leave them where they are. true: disconnect with a message,
+  # which is the choice for a network that must never have a reachable gap.
+  disconnect-unrouted-players: false
+
+# -----------------------------------------------------------------------------
+#  Backend transfer behaviour (ignored by the proxy)
+# -----------------------------------------------------------------------------
+transfer:
+  # How far into the new region a player must walk before a transfer is
+  # requested. Absorbs client/server position jitter on a boundary; 1-4 is sane.
+  boundary-margin-blocks: 2
+
+  # How long after joining a backend ignores boundary checks, in ticks (20 = 1s).
+  # The proxy is still placing the player, so their position is not meaningful
+  # yet. 40 ticks is two seconds.
+  join-grace-ticks: 40
+
+  # Minimum time between two transfer attempts for the same player.
+  cooldown-seconds: 5
+
+  # How long a transfer request may stay unanswered before the backend treats it
+  # as failed and applies on-transfer-failure.
+  max-pending-seconds: 15
+
+  # What happens when a transfer did not complete:
+  #   revert   : move the player back inside their own region (default, safest —
+  #              it prevents the destination server's chunks from being written
+  #              by the wrong server)
+  #   log-only : leave them where they are and retry after the cooldown
+  on-transfer-failure: revert
+
+  # What happens when a player stands in a coordinate that no server owns:
+  #   allow  : leave them there and log it (default)
+  #   return : push them back inside the owning region of this server
+  unassigned-area-policy: allow
+
+# -----------------------------------------------------------------------------
+#  This instance (backends only; the proxy ignores it)
+# -----------------------------------------------------------------------------
+# A backend usually works out which entry below is its own by comparing its
+# listening port with the configured addresses, which means nothing has to be
+# edited per machine. Set server-id explicitly only when that cannot work, for
+# example two backends behind one port in a container runtime.
+#
+# backend:
+#   server-id: west
+#   enabled: true
+
+# -----------------------------------------------------------------------------
+#  Servers — the routing table
+# -----------------------------------------------------------------------------
+#
+# Bounds are MINIMUM-INCLUSIVE, MAXIMUM-EXCLUSIVE:
+#
+#     min-x <= x < max-x        min-z <= z < max-z
+#
+# Both examples below put the shared edge at x = 0: block -1 belongs to `west`,
+# block 0 belongs to `east`. They tile the border exactly, so no coordinate is
+# owned twice and none is left over.
+#
+# Coordinates are global block coordinates. Every backend sees the same number
+# for the same physical place, which is what makes a shared coordinate system
+# possible at all: a player who walks from x = -1 to x = 0 arrives on `east` at
+# x = 0, standing on terrain that `east` generated from the same seed.
+#
+servers:
+  - id: west
+    address: "127.0.0.1:25566"
+    bounds:
+      min-x: -100000
+      max-x: 0
+      min-z: -100000
+      max-z: 100000
+
+  - id: east
+    address: "127.0.0.1:25567"
+    bounds:
+      min-x: 0
+      max-x: 100000
+      min-z: -100000
+      max-z: 100000

@@ -1,0 +1,46 @@
+/*
+ * OpenDonut root build script.
+ *
+ * Only shared configuration lives here. Each module owns its own dependencies so that
+ * the Fabric module can use Loom and the Velocity module can use the PaperMC API without
+ * leaking into each other or into `common` (which must stay Minecraft-free).
+ */
+
+allprojects {
+	group = 'net.opendonut'
+	version = providers.gradleProperty('opendonut_version').get()
+}
+
+subprojects {
+	repositories {
+		mavenCentral()
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		maven {
+			name = 'PaperMC'
+			url = 'https://repo.papermc.io/repository/maven-public/'
+		}
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		options.encoding = 'UTF-8'
+		options.compilerArgs << '-Xlint:all' << '-Xlint:-processing' << '-Xlint:-serial'
+	}
+
+	tasks.withType(Javadoc).configureEach {
+		options.encoding = 'UTF-8'
+		options.addStringOption('Xdoclint:none', '-quiet')
+	}
+}
+
+/**
+ * Convenience aggregate task: builds every module artifact without running checks.
+ * Use `gradlew build` for the full build including tests.
+ */
+tasks.register('artifacts') {
+	group = 'build'
+	description = 'Assembles all distributable artifacts without running tests.'
+	dependsOn ':common:build', ':fabric-mod:build', ':velocity-plugin:build'
+}

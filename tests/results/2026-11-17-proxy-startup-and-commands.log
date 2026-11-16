@@ -1,0 +1,45 @@
+﻿[stderr] 2026-11-16T18:22:59.287906400Z main WARN Advanced terminal features are not available in this environment
+[05:22:59 INFO]: Booting up Velocity 4.3.1...
+[05:22:59 INFO]: Connections will use NIO channels, Java compression, Java ciphers
+[05:22:59 INFO]: Loading localizations...
+[05:22:59 INFO]: Loading plugins...
+[05:22:59 INFO]: Loaded plugin opendonut 0.1.0-dev by OpenDonut contributors
+[05:23:00 INFO]: Loaded 2 plugins
+[05:23:00 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (world.border:25) world border is X=[-100000,100000) Z=[-100000,100000) (40000000000 blocks, 12500 x 12500 chunks)
+[05:23:00 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (transfer:45) transfer.max-pending-seconds (15) is larger than transfer.cooldown-seconds (5), so the pending timeout is what actually controls how often a failed transfer is retried
+[05:23:00 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers:53) coverage: 100.000% of the world border is assigned (40000000000 of 40000000000 blocks), using 2 lookup buckets
+[05:23:00 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[0]:53) region 'west' X=[-100000,0) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25566
+[05:23:00 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[1]:61) region 'east' X=[0,100000) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25567
+[05:23:00 INFO] [opendonut]: OpenDonut: this platform has no POSIX permissions, so OpenDonut cannot verify that plugins\opendonut\secrets\bridge-secret.txt is private; make sure the folder is not shared
+[05:23:00 INFO] [opendonut]: OpenDonut 26.3 is active: 2 region(s) of the world border, seed 8275902214569690041, channel opendonut:bridge, secret fingerprint 6488b4ac
+[05:23:00 INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
+[05:23:00 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
+[05:23:00 INFO]: Done (0.74s)!
+[05:23:02 INFO]: [OpenDonut] OpenDonut is active.
+[05:23:02 INFO]: [OpenDonut]   data directory : plugins\opendonut
+[05:23:02 INFO]: [OpenDonut]   world          : world, border center=(0,0) size=200000 X=[-100000,100000) Z=[-100000,100000)
+[05:23:02 INFO]: [OpenDonut]   seed           : 8275902214569690041  (level-seed=8275902214569690041 in every server.properties)
+[05:23:02 INFO]: [OpenDonut]   bridge         : channel opendonut:bridge, secret fingerprint 6488b4ac
+[05:23:02 INFO]: [OpenDonut]   regions        : 2 configured, 2 registered with the proxy
+[05:23:02 INFO]: [OpenDonut]   backends       : 0 have announced themselves, 0 transfer(s) in flight
+[05:23:02 INFO]: CONSOLE -> executed command /opendonut status
+[05:23:02 INFO]: [OpenDonut] Routing table (2 region(s), 2 lookup bucket(s))
+[05:23:02 INFO]: [OpenDonut]   west             127.0.0.1:25566          X=[-100000,0) Z=[-100000,100000)  [no HELLO yet]
+[05:23:02 INFO]: [OpenDonut]   east             127.0.0.1:25567          X=[0,100000) Z=[-100000,100000)  [no HELLO yet]
+[05:23:02 INFO]: CONSOLE -> executed command /opendonut regions
+[05:23:03 INFO]: [OpenDonut] No backend has announced itself yet. A backend sends its HELLO when its first player connects, because plugin messages travel through a player's connection.
+[05:23:03 INFO]: CONSOLE -> executed command /opendonut backends
+[05:23:04 INFO]: [OpenDonut] The authoritative world seed is 8275902214569690041.
+[05:23:04 INFO]: [OpenDonut] Put this in every backend's server.properties BEFORE its world is created:
+[05:23:04 INFO]: [OpenDonut]   level-seed=8275902214569690041
+[05:23:04 INFO]: [OpenDonut] Changing the seed of a world that already exists does not regenerate its chunks; see docs/troubleshooting.md.
+[05:23:04 INFO]: CONSOLE -> executed command /opendonut seed
+[05:23:04 INFO]: [OpenDonut] (0, 0) chunk (0, 0) is owned by 'east' (127.0.0.1:25567), region X=[0,100000) Z=[-100000,100000).
+[05:23:04 INFO]: CONSOLE -> executed command /opendonut route 0 0
+[05:23:05 INFO]: [OpenDonut] (-1, 0) chunk (-1, 0) is owned by 'west' (127.0.0.1:25566), region X=[-100000,0) Z=[-100000,100000).
+[05:23:05 INFO]: CONSOLE -> executed command /opendonut route -1 0
+[05:23:06 INFO]: [OpenDonut] (100000, 0) chunk (6250, 0) is owned by no server, so a player there cannot be routed anywhere.
+[05:23:06 INFO]: CONSOLE -> executed command /opendonut route 100000 0
+[05:23:08 INFO]: CONSOLE -> executed command /shutdown
+[05:23:08 INFO]: Shutting down the proxy...
+[05:23:08 INFO]: Closing endpoint /0.0.0.0:25565

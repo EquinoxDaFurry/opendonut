@@ -1,0 +1,66 @@
+/*
+ * fabric-mod — the Minecraft backend integration.
+ *
+ * Targets Minecraft 26.3 / Fabric Loader 0.20.1. Note that there is deliberately no `mappings`
+ * dependency: Minecraft 26.x ships deobfuscated, so Fabric publishes no intermediary or Yarn
+ * mappings for it, and Loom compiles directly against the official names that are already in the
+ * jar. See docs/architecture.md ("Version matrix") for how that was verified.
+ *
+ * The mod embeds `common` and SnakeYAML as nested jars (META-INF/jars) rather than merging classes,
+ * which is what Fabric Loader supports natively and what keeps the build free of a shading plugin.
+ */
+
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${fabric_loom_version}"
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(providers.gradleProperty('java_version').get() as int)
+	}
+	withSourcesJar()
+}
+
+// There is no `runs` block on purpose. OpenDonut is tested against the real backend servers (see
+// docs/installation.md) rather than through a Loom development run, because what has to be proven is
+// behaviour behind a proxy, and a development server without Velocity cannot show that.
+
+dependencies {
+	// Minecraft and the loader. No mappings line on purpose: 26.x is not obfuscated.
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+
+	// Fabric API: networking, lifecycle events and command registration.
+	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+
+	// The shared configuration, region and bridge engine.
+	implementation project(':common')
+
+	// Embedded as nested jars inside the mod jar. Fabric Loader loads META-INF/jars contents onto the
+	// class path of the mod, so `common` and SnakeYAML are present at runtime without the
+	// administrator having to install anything else.
+	include project(':common')
+	include "org.yaml:snakeyaml:${snakeyaml_version}"
+}
+
+/**
+ * The version of the mod that ends up in fabric.mod.json, so the running server reports a real value
+ * in its HELLO messages and in /opendonut info.
+ */
+processResources {
+	inputs.property 'version', project.version
+	inputs.property 'minecraft_version', providers.gradleProperty('minecraft_version').get()
+	inputs.property 'loader_version', providers.gradleProperty('fabric_loader_version').get()
+
+	filesMatching('fabric.mod.json') {
+		expand(
+			version: project.version,
+			minecraft_version: providers.gradleProperty('minecraft_version').get(),
+			loader_version: providers.gradleProperty('fabric_loader_version').get()
+		)
+	}
+}
+
+tasks.named('jar') {
+	archiveBaseName = 'opendonut-fabric'
+}

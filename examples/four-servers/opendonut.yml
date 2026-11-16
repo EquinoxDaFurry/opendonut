@@ -1,0 +1,85 @@
+# -----------------------------------------------------------------------------
+# OpenDonut — four servers in a 2 x 2 grid.
+#
+# The same 200000 x 200000 border as the two-server example, cut twice on each
+# axis. Each quadrant is 100000 x 100000 blocks (6250 x 6250 chunks).
+#
+#     nw  127.0.0.1:25566   X = [-100000, 0)   Z = [-100000, 0)
+#     ne  127.0.0.1:25567   X = [ 0, 100000)   Z = [-100000, 0)
+#     sw  127.0.0.1:25568   X = [-100000, 0)   Z = [ 0, 100000)
+#     se  127.0.0.1:25569   X = [ 0, 100000)   Z = [ 0, 100000)
+#
+# The four regions tile the border exactly. The corner where all four meet is the
+# origin: block (-1, -1) is nw, block (0, -1) is ne, block (-1, 0) is sw and
+# block (0, 0) is se. Check it:
+#
+#     java -jar opendonut-tools.jar route opendonut.yml -1 -1   -> nw
+#     java -jar opendonut-tools.jar route opendonut.yml  0 -1   -> ne
+#     java -jar opendonut-tools.jar route opendonut.yml -1  0   -> sw
+#     java -jar opendonut-tools.jar route opendonut.yml  0  0   -> se
+#
+# Notice that adding two servers required editing only this file: no Java code
+# changed, and the proxy derives its routing table from the same document.
+# -----------------------------------------------------------------------------
+config-version: 1
+
+world:
+  name: "world"
+  seed: 1234567890
+  border:
+    center-x: 0
+    center-z: 0
+    size: 200000
+
+validation:
+  require-full-coverage: true
+  strict-chunk-alignment: true
+  unknown-fields: error
+
+bridge:
+  enabled: true
+  secret-file: "secrets/bridge-secret.txt"
+
+proxy:
+  auto-register-backends: true
+  require-backend-hello: true
+
+transfer:
+  boundary-margin-blocks: 2
+  join-grace-ticks: 40
+  cooldown-seconds: 5
+  max-pending-seconds: 15
+  on-transfer-failure: revert
+
+servers:
+  - id: nw
+    address: "127.0.0.1:25566"
+    bounds:
+      min-x: -100000
+      max-x: 0
+      min-z: -100000
+      max-z: 0
+
+  - id: ne
+    address: "127.0.0.1:25567"
+    bounds:
+      min-x: 0
+      max-x: 100000
+      min-z: -100000
+      max-z: 0
+
+  - id: sw
+    address: "127.0.0.1:25568"
+    bounds:
+      min-x: -100000
+      max-x: 0
+      min-z: 0
+      max-z: 100000
+
+  - id: se
+    address: "127.0.0.1:25569"
+    bounds:
+      min-x: 0
+      max-x: 100000
+      min-z: 0
+      max-z: 100000

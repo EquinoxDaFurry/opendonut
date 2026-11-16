@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "opendonut",
+  "version": "${version}",
+  "name": "OpenDonut",
+  "description": "Makes several independent Fabric servers behave like one continuous world. Detects when a player crosses the boundary of the region their server owns and asks the Velocity proxy to move them to the server that owns their new global coordinates.",
+  "authors": [
+    "OpenDonut contributors"
+  ],
+  "contact": {
+    "homepage": "https://github.com/opendonut/opendonut",
+    "issues": "https://github.com/opendonut/opendonut/issues",
+    "sources": "https://github.com/opendonut/opendonut"
+  },
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "net.opendonut.fabric.OpenDonutMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "custom": {
+    "opendonut:notes": [
+      "This mod is useless without the matching OpenDonut Velocity plugin: it sends authenticated",
+      "transfer requests to the proxy and expects placements back. Install both, and give them the",
+      "same bridge secret."
+    ]
+  }
+}

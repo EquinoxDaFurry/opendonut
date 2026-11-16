@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Read the troubleshooting guide first
+    url: https://github.com/opendonut/opendonut/blob/main/docs/troubleshooting.md
+    about: Most setup problems are covered there, including seed mismatches, secret mismatches and failed transfers.
+  - name: Configuration reference
+    url: https://github.com/opendonut/opendonut/blob/main/docs/configuration.md
+    about: Every configuration key, the coordinate rules, and what the validator checks.

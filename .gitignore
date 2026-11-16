@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------------------
+# OpenDonut — never commit anything below this line
+# ---------------------------------------------------------------------------
+
+# --- Gradle / build output -------------------------------------------------
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# --- IDE / editor ----------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+*.sublime-workspace
+.vscode/
+# Eclipse/IDEA generated run configurations for Loom
+run/
+*.launch
+
+# --- Minecraft world data, logs, backups -----------------------------------
+# OpenDonut never contains worlds; these rules are a safety net so that a
+# misfired copy/paste cannot end up in a commit.
+world/
+world_nether/
+world_the_end/
+*.mca
+*.mcr
+level.dat
+level.dat_old
+session.lock
+logs/
+crash-reports/
+backups/
+*.tar.gz
+*.zip
+
+# --- Local configuration state --------------------------------------------
+# The example is committed; your own configuration, the seed it generated and
+# the secrets it points at are local state, not sources.
+config/opendonut.yml
+config/seed.properties
+config/secrets/
+plugins/
+
+# The seed store, wherever a component happens to have written it. Running the
+# CLI with a relative configuration path puts it in the working directory, and a
+# generated seed is state, not a source file.
+seed.properties
+/opendonut.yml
+FabricProxy-Lite.toml
+
+# --- Secrets ---------------------------------------------------------------
+# Forwarding / bridge secrets must never be published.
+secrets/
+*.secret
+secret.txt
+bridge-secret.txt
+forwarding.secret
+velocity-forwarding.secret
+
+# --- Local runtime for integration testing ---------------------------------
+# A throwaway Velocity install and downloaded server jars live here.
+tests/runtime/
+tests/downloads/
+tools/downloads/
+
+# --- Local machine specifics ----------------------------------------------
+local.properties
+*.local
+.env
+.env.*

@@ -1,0 +1,10 @@
+﻿[stderr] 2026-11-16T18:17:56.885014800Z main WARN Advanced terminal features are not available in this environment
+[05:17:57 INFO]: Booting up Velocity 4.3.1...
+[05:17:57 INFO]: Connections will use NIO channels, Java compression, Java ciphers
+[05:17:57 ERROR]: Exception in thread "main" java.nio.file.ProviderNotFoundException: Provider "jar" not found
+[05:17:57 ERROR]: 	at java.base/java.nio.file.FileSystems.newFileSystem(FileSystems.java:342)
+[05:17:57 ERROR]: 	at java.base/java.nio.file.FileSystems.newFileSystem(FileSystems.java:273)
+[05:17:57 ERROR]: 	at com.velocitypowered.proxy.util.ResourceUtils.visitResources(ResourceUtils.java:64)
+[05:17:57 ERROR]: 	at com.velocitypowered.proxy.VelocityServer.registerTranslations(VelocityServer.java:351)
+[05:17:57 ERROR]: 	at com.velocitypowered.proxy.VelocityServer.start(VelocityServer.java:295)
+[05:17:57 ERROR]: 	at com.velocitypowered.proxy.Velocity.main(Velocity.java:71)

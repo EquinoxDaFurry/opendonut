@@ -1,0 +1,708 @@
+package net.opendonut.velocity;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.UUID;
+
+import com.google.inject.Inject;
+import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.command.SimpleCommand;
+import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.PluginMessageEvent;
+import com.velocitypowered.api.event.player.ServerPostConnectEvent;
+import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.annotation.DataDirectory;
+import com.velocitypowered.api.proxy.ConnectionRequestBuilder;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
+import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
+import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
+import com.velocitypowered.api.proxy.server.ServerInfo;
+
+import org.slf4j.Logger;
+
+import net.opendonut.common.bridge.BridgeCodec;
+import net.opendonut.common.bridge.BridgeDecodeResult;
+import net.opendonut.common.bridge.BridgeEnvelope;
+import net.opendonut.common.bridge.BridgeMessage;
+import net.opendonut.common.bridge.BridgeSecret;
+import net.opendonut.common.bridge.DecodeFailure;
+import net.opendonut.common.bridge.NonceCache;
+import net.opendonut.common.config.ConfigLoadResult;
+import net.opendonut.common.config.ConfigLoader;
+import net.opendonut.common.config.SeedResolution;
+import net.opendonut.common.config.SeedStore;
+import net.opendonut.common.config.ValidationIssue;
+import net.opendonut.common.model.OpenDonutConfig;
+import net.opendonut.common.model.ServerDefinition;
+
+/**
+ * The OpenDonut Velocity plugin: the authority on where a player is allowed to be.
+ *
+ * <h2>Division of responsibility</h2>
+ * <table border="1">
+ *   <caption>Who decides what</caption>
+ *   <tr><th>Component</th><th>Decides</th></tr>
+ *   <tr><td>Client</td><td>Nothing. It is never consulted and never trusted.</td></tr>
+ *   <tr><td>Fabric backend</td><td>Where its own players are, and that its region and world match the
+ *       configuration. It may <em>ask</em> for a transfer.</td></tr>
+ *   <tr><td>This plugin</td><td>Which server owns a coordinate, whether a backend may receive players, the
+ *       network seed, and whether a transfer happens at all.</td></tr>
+ * </table>
+ *
+ * <h2>The transfer, step by step</h2>
+ * <ol>
+ *   <li>A backend detects that one of its players has left its region and sends an authenticated
+ *       {@code TRANSFER_REQUEST} through that player's connection.</li>
+ *   <li>Velocity delivers it as a {@link PluginMessageEvent} whose source is a
+ *       {@code ServerConnection} — <em>or</em> a {@code Player}, if a modified client sent it. The latter is
+ *       refused and logged.</li>
+ *   <li>The frame's HMAC, timestamp and nonce are verified before a single field is read.</li>
+ *   <li>The destination is re-derived from this plugin's own region table. The backend's hint is only used
+ *       to detect and report a disagreement.</li>
+ *   <li>The destination is checked to be a registered, verified backend.</li>
+ *   <li>The transfer is recorded and the connection request is issued.</li>
+ *   <li>When the player has connected, {@link ServerPostConnectEvent} sends the destination backend a
+ *       {@code PLACE_PLAYER} with the global coordinates. Velocity's plugin message API needs an
+ *       established connection to send through, which is exactly why the coordinates arrive <em>after</em>
+ *       the connect and not before.</li>
+ *   <li>The requesting backend is told the outcome, so it can clear its state or apply its failure policy.</li>
+ * </ol>
+ *
+ * <h2>What this plugin does not do</h2>
+ * It does not move inventories, health, experience or player data between servers. Those live in each
+ * backend's own player data files, and Velocity has no concept of them. That is a documented limitation of
+ * 0.1.0-dev, not something this plugin pretends to solve.
+ */
+@Plugin(
+		id = "opendonut",
+		name = "OpenDonut",
+		version = "0.1.0-dev",
+		description = "Routes players between Fabric backends so that several servers behave like one "
+				+ "continuous world.",
+		authors = {"OpenDonut contributors"},
+		url = "https://github.com/opendonut/opendonut")
+public final class OpenDonutVelocityPlugin {
+
+	/** The Minecraft version this build was made for. Surfaced in HELLO acknowledgements. */
+	private static final String MINECRAFT_VERSION = "26.3";
+
+	/** How long a transfer stays meaningful. Matches the backend's pending timeout by default. */
+	private static final long TRANSFER_MAX_AGE_MILLIS = 60_000L;
+
+	private final ProxyServer server;
+	private final Logger logger;
+	private final Path dataDirectory;
+
+	private final NonceCache nonceCache = new NonceCache();
+
+	private OpenDonutConfig config;
+	private ProxyRoutingTable routing;
+	private byte[] secret;
+	private ChannelIdentifier channel;
+	private long resolvedSeed;
+	private boolean active;
+
+	/**
+	 * Creates the plugin. Velocity injects everything the plugin needs.
+	 *
+	 * @param server the proxy
+	 * @param logger the plugin logger
+	 * @param dataDirectory the directory Velocity gives the plugin for its files
+	 */
+	@Inject
+	public OpenDonutVelocityPlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
+		this.server = server;
+		this.logger = logger;
+		this.dataDirectory = dataDirectory;
+	}
+
+	/** @return the Minecraft version this build targets, for HELLO checks */
+	static String minecraftVersionHint() {
+		return MINECRAFT_VERSION;
+	}
+
+	/**
+	 * Activation: load and validate the configuration, resolve the seed, load the secret, register the
+	 * channel, register the backends and the admin command.
+	 *
+	 * <p>If the configuration is unusable the plugin stays inert and says why. It does not disable the proxy:
+	 * the proxy still works as a plain proxy, which is the least surprising outcome for an operator who
+	 * mistyped a coordinate.
+	 *
+	 * @param event the proxy initialisation event
+	 */
+	@Subscribe
+	public void onProxyInitialize(ProxyInitializeEvent event) {
+		if (!reload()) {
+			return;
+		}
+
+		CommandManager commands = server.getCommandManager();
+		commands.register(commands.metaBuilder("opendonut").plugin(this).build(),
+				new OpenDonutProxyCommand(this));
+
+		logger.info("OpenDonut {} is active: {} region(s) of the world border, seed {}, channel {}, "
+						+ "secret fingerprint {}",
+				MINECRAFT_VERSION, config.servers().size(), resolvedSeed, config.bridge().channel(),
+				BridgeSecret.fingerprint(secret));
+		logger.info("OpenDonut: every backend must use the same seed. Put '{}' in each backend's "
+						+ "server.properties before its world is created.",
+				SeedStore.levelSeedLine(resolvedSeed));
+	}
+
+	/**
+	 * Loads everything the plugin needs. Also the implementation of {@code /opendonut reload}.
+	 *
+	 * @return {@code true} when the plugin is now active
+	 */
+	synchronized boolean reload() {
+		active = false;
+		Path configPath = dataDirectory.resolve("opendonut.yml");
+		ConfigLoadResult loaded = ConfigLoader.load(configPath);
+
+		if (!loaded.isUsable()) {
+			logger.error("OpenDonut is not active: the configuration at {} cannot be used. Validate it with "
+							+ "'java -jar opendonut-tools.jar check {}'.{}", configPath, configPath,
+					System.lineSeparator() + loaded.result().formatWithSummary());
+			return false;
+		}
+		OpenDonutConfig candidate = loaded.config().orElseThrow();
+		for (ValidationIssue issue : loaded.result().issues()) {
+			switch (issue.severity()) {
+				case ERROR -> logger.error("OpenDonut configuration: {}", issue.format());
+				case WARNING -> logger.warn("OpenDonut configuration: {}", issue.format());
+				case INFO -> logger.info("OpenDonut configuration: {}", issue.format());
+			}
+		}
+
+		// The secret is loaded before anything is registered, because a channel that cannot be authenticated
+		// must never be listened on: it would accept unauthenticated routing instructions.
+		if (candidate.bridge().enabled()) {
+			Path secretFile = Path.of(candidate.bridge().secretFile());
+			if (!secretFile.isAbsolute()) {
+				secretFile = dataDirectory.resolve(secretFile);
+			}
+			try {
+				BridgeSecret.LoadResult loadedSecret = BridgeSecret.loadOrCreate(secretFile);
+				secret = loadedSecret.secret();
+				for (ValidationIssue issue : loadedSecret.issues()) {
+					logger.info("OpenDonut: {}", issue.message());
+				}
+			} catch (IOException e) {
+				logger.error("OpenDonut is not active: the bridge secret at {} could not be used: {}. "
+								+ "Generate one with 'java -jar opendonut-tools.jar secret {}' and copy it to "
+								+ "every backend.", secretFile, e.getMessage(), secretFile);
+				return false;
+			}
+		} else {
+			logger.warn("OpenDonut: bridge.enabled is false, so transfers are switched off. Players will be "
+					+ "confined to whichever backend they first connect to.");
+			secret = null;
+		}
+
+		// The proxy is the authority on the network seed, so it is resolved here, once, and then checked
+		// against every backend's report. With 'seed: random' this is also where the value is generated and
+		// persisted for the backends to copy.
+		SeedResolution seed = SeedStore.resolve(dataDirectory, candidate.world().seed());
+		for (ValidationIssue issue : seed.issues()) {
+			logger.info("OpenDonut: {}", issue.message());
+		}
+		if (seed.hasErrors()) {
+			logger.error("OpenDonut is not active: the world seed could not be resolved. See the messages "
+					+ "above.");
+			return false;
+		}
+
+		config = candidate;
+		resolvedSeed = seed.seed();
+		routing = new ProxyRoutingTable(candidate);
+
+		if (candidate.bridge().enabled()) {
+			registerChannel(candidate.bridge().channel());
+			server.getChannelRegistrar().register(channel);
+		}
+		if (candidate.proxy().autoRegisterBackends()) {
+			registerBackends(candidate);
+		}
+		verifyBackendsAreRegistered(candidate);
+
+		active = true;
+		return true;
+	}
+
+	/**
+	 * Registers the plugin message channel this plugin listens on.
+	 *
+	 * <p>Velocity must be told about the channel, otherwise our traffic would be forwarded to the client
+	 * untouched — and a client that does not know the channel can be disconnected for it.
+	 *
+	 * @param channelName the channel in {@code namespace:path} form
+	 */
+	private void registerChannel(String channelName) {
+		int separator = channelName.indexOf(':');
+		String namespace = channelName.substring(0, separator);
+		String path = channelName.substring(separator + 1);
+		channel = MinecraftChannelIdentifier.create(namespace, path);
+	}
+
+	/**
+	 * Registers every configured backend with the proxy, so {@code velocity.toml} does not have to list them.
+	 *
+	 * <p>Adding a server then means editing one YAML file. A name that {@code velocity.toml} already defines
+	 * is left alone: the file's entry wins, and the difference is reported, because silently replacing an
+	 * operator's own entry would be worse than saying so.
+	 *
+	 * @param candidate the configuration
+	 */
+	private void registerBackends(OpenDonutConfig candidate) {
+		for (ServerDefinition definition : candidate.servers()) {
+			if (server.getServer(definition.id()).isPresent()) {
+				continue;
+			}
+			InetSocketAddress address =
+					new InetSocketAddress(definition.address().host(), definition.address().port());
+			server.registerServer(new ServerInfo(definition.id(), address));
+			logger.info("OpenDonut: registered backend '{}' at {} with the proxy",
+					definition.id(), definition.address());
+		}
+	}
+
+	/**
+	 * Reports configured backends that the proxy does not know about.
+	 *
+	 * <p>A misnamed entry is the most common setup mistake, and it produces a confusing "server not found"
+	 * later. Saying so at startup is cheaper.
+	 *
+	 * @param candidate the configuration
+	 */
+	private void verifyBackendsAreRegistered(OpenDonutConfig candidate) {
+		for (ServerDefinition definition : candidate.servers()) {
+			if (server.getServer(definition.id()).isEmpty()) {
+				logger.error("OpenDonut: backend '{}' is in the configuration but the proxy has no server "
+								+ "with that name. Set proxy.auto-register-backends: true, or add it to "
+								+ "velocity.toml with exactly this name.",
+						definition.id());
+			}
+		}
+	}
+
+	/**
+	 * Handles a plugin message on the OpenDonut channel.
+	 *
+	 * <p>Three things happen here, in this order, and the order is the security design:
+	 *
+	 * <ol>
+	 *   <li>the message is marked as handled, so it is never forwarded to the player's client;</li>
+	 *   <li>the <em>source</em> is checked: only a backend connection is allowed to instruct the proxy;</li>
+	 *   <li>the frame is authenticated before any field is interpreted.</li>
+	 * </ol>
+	 *
+	 * @param event the plugin message event
+	 */
+	@Subscribe
+	public void onPluginMessage(PluginMessageEvent event) {
+		if (!active || channel == null || !event.getIdentifier().getId().equals(channel.getId())) {
+			return;
+		}
+
+		// Never let our traffic reach the client: it has no mod, and a client that receives a payload it does
+		// not know may be disconnected.
+		event.setResult(PluginMessageEvent.ForwardResult.handled());
+
+		if (!(event.getSource() instanceof ServerConnection connection)) {
+			// A player sent this. A vanilla client cannot, so it is either a modified client probing the
+			// channel or a badly configured plugin.
+			logger.warn("OpenDonut: refused a plugin message on {} that came from a player rather than a "
+							+ "backend ({}). The channel is only for backends; a client cannot route itself.",
+					channel.getId(), BridgeCodec.describeFrame(event.getData()));
+			return;
+		}
+
+		BridgeDecodeResult decoded = BridgeCodec.decode(event.getData(), secret,
+				System.currentTimeMillis(), config.bridge().timestampToleranceSeconds(), nonceCache);
+		if (!decoded.isAccepted()) {
+			BridgeDecodeResult.Failed failure = (BridgeDecodeResult.Failed) decoded;
+			if (failure.failure().isSuspicious()) {
+				logger.warn("OpenDonut: refused a {} frame from backend '{}': {} ({}). A mismatched bridge "
+								+ "secret is the usual cause; otherwise treat this as an attempt to "
+								+ "interfere.",
+						BridgeCodec.describeFrame(event.getData()),
+						connection.getServerInfo().getName(), failure.failure(), failure.detail());
+			} else {
+				logger.warn("OpenDonut: refused a frame from backend '{}': {} ({})",
+						connection.getServerInfo().getName(), failure.failure(), failure.detail());
+			}
+			return;
+		}
+
+		BridgeMessage message = decoded.envelopeIfAccepted().orElseThrow().message();
+		switch (message) {
+			case BridgeMessage.Hello hello -> handleHello(connection, hello);
+			case BridgeMessage.TransferRequest request -> handleTransferRequest(connection, request);
+			case BridgeMessage.HelloAck ack -> logger.warn(
+					"OpenDonut: backend '{}' sent a HELLO_ACK; that message only travels from the proxy to a "
+							+ "backend. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.PlacePlayer placement -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLACE_PLAYER; only the proxy may place players. Ignoring it.",
+					connection.getServerInfo().getName());
+			case BridgeMessage.TransferResult result -> logger.warn(
+					"OpenDonut: backend '{}' sent a TRANSFER_RESULT; only the proxy reports outcomes. "
+							+ "Ignoring it.", connection.getServerInfo().getName());
+		}
+	}
+
+	/**
+	 * Handles a backend announcing itself.
+	 *
+	 * @param connection the backend connection the HELLO arrived through
+	 * @param hello the message
+	 */
+	private void handleHello(ServerConnection connection, BridgeMessage.Hello hello) {
+		ProxyRoutingTable.Verdict verdict = routing.acceptHello(
+				connection.getServerInfo().getName(),
+				hello.serverId(),
+				hello.worldName(),
+				hello.seed(),
+				hello.bounds(),
+				hello.minecraftVersion(),
+				hello.openDonutVersion(),
+				resolvedSeed,
+				MINECRAFT_VERSION);
+
+		if (verdict.accepted()) {
+			logger.info("OpenDonut: backend '{}' verified ({})", hello.serverId(), verdict.detail());
+		} else {
+			logger.error("OpenDonut: backend '{}' does NOT match the central configuration and will not "
+					+ "receive players: {}", hello.serverId(), verdict.detail());
+		}
+
+		sendTo(connection, new BridgeMessage.HelloAck(hello.serverId(), verdict.accepted(),
+				verdict.detail(), resolvedSeed));
+	}
+
+	/**
+	 * Handles a request to move a player.
+	 *
+	 * @param connection the requesting backend's connection
+	 * @param request the request
+	 */
+	private void handleTransferRequest(ServerConnection connection, BridgeMessage.TransferRequest request) {
+		String sourceServerName = connection.getServerInfo().getName();
+
+		Optional<Player> maybePlayer = server.getPlayer(request.playerId());
+		if (maybePlayer.isEmpty()) {
+			sendTo(connection, failure(request, "", "the player is not connected to this proxy any more"));
+			return;
+		}
+		Player player = maybePlayer.get();
+
+		// The claim "this player is on the server that is asking" must be true, otherwise the request is about
+		// somebody else's player and is ignored.
+		Optional<ServerConnection> currentServer = player.getCurrentServer();
+		if (currentServer.isEmpty() || !currentServer.get().getServerInfo().getName().equals(sourceServerName)) {
+			logger.warn("OpenDonut: backend '{}' asked to move {} but that player is on '{}'; ignoring the "
+							+ "request", sourceServerName, player.getUsername(),
+					currentServer.map(server -> server.getServerInfo().getName()).orElse("no server"));
+			return;
+		}
+		if (!request.fromServerId().equals(sourceServerName)) {
+			logger.warn("OpenDonut: backend '{}' described itself as '{}' in a transfer request; the proxy's "
+							+ "name for that connection wins", sourceServerName, request.fromServerId());
+		}
+
+		// The decision, made from the proxy's own table and never from the backend's hint.
+		Optional<ServerDefinition> owner = routing.owner(request.globalX(), request.globalZ());
+		if (owner.isEmpty()) {
+			sendTo(connection, failure(request, "",
+					"no configured server owns (" + request.globalX() + ", " + request.globalZ()
+							+ "), so there is nowhere to move the player"));
+			return;
+		}
+		ServerDefinition destination = owner.get();
+
+		if (!destination.id().equals(request.requestedServerId()) && !request.requestedServerId().isEmpty()) {
+			// Not a security failure — the proxy's answer wins — but it means the two configurations disagree,
+			// which is worth an administrator's attention.
+			logger.warn("OpenDonut: backend '{}' expected '{}' to own ({}, {}) but this proxy's table says "
+							+ "'{}'. Both machines must load the same opendonut.yml.",
+					sourceServerName, request.requestedServerId(), request.globalX(), request.globalZ(),
+					destination.id());
+		}
+
+		if (destination.id().equals(sourceServerName)) {
+			// The player never left, as far as the proxy is concerned. Move on rather than bounce them.
+			sendTo(connection, failure(request, sourceServerName,
+					"the coordinate is already owned by the server the player is on"));
+			return;
+		}
+
+		if (!routing.mayReceivePlayers(destination.id())) {
+			sendTo(connection, failure(request, destination.id(),
+					"backend '" + destination.id() + "' has not verified itself against the central "
+							+ "configuration yet, so it may not receive players. Its HELLO is logged on the "
+							+ "proxy; run /opendonut backends to see what it reported. Set "
+							+ "proxy.require-backend-hello: false to route to it anyway."));
+			return;
+		}
+
+		Optional<RegisteredServer> target = server.getServer(destination.id());
+		if (target.isEmpty()) {
+			sendTo(connection, failure(request, destination.id(),
+					"the proxy has no server registered as '" + destination.id() + "'"));
+			return;
+		}
+
+		routing.pruneStale(TRANSFER_MAX_AGE_MILLIS);
+
+		ProxyRoutingTable.PendingTransfer transfer = new ProxyRoutingTable.PendingTransfer(
+				request.playerId(),
+				sourceServerName,
+				destination.id(),
+				request.globalX(),
+				request.globalY(),
+				request.globalZ(),
+				request.yaw(),
+				request.pitch(),
+				request.reason(),
+				System.currentTimeMillis());
+		routing.markPending(transfer);
+
+		logger.info("OpenDonut: moving {} from '{}' to '{}' at global ({}, {}, {}) because {}",
+				player.getUsername(), sourceServerName, destination.id(), request.globalX(),
+				request.globalY(), request.globalZ(), request.reason());
+
+		player.createConnectionRequest(target.get()).connect()
+				.whenComplete((result, error) -> completeTransfer(connection, transfer, result, error));
+	}
+
+	/**
+	 * Reports the outcome of a connect attempt to the requesting backend.
+	 *
+	 * @param sourceConnection the requesting backend's connection
+	 * @param transfer the transfer
+	 * @param result the connection result, or {@code null} when the attempt threw
+	 * @param error the exception, or {@code null} on a normal completion
+	 */
+	private void completeTransfer(
+			ServerConnection sourceConnection,
+			ProxyRoutingTable.PendingTransfer transfer,
+			ConnectionRequestBuilder.Result result,
+			Throwable error) {
+
+		if (error != null) {
+			routing.clearPending(transfer.playerId());
+			logger.error("OpenDonut: the connection request for {} to '{}' failed: {}",
+					transfer.playerId(), transfer.toServerId(), error.toString());
+			sendTo(sourceConnection, new BridgeMessage.TransferResult(transfer.playerId(),
+					transfer.fromServerId(), transfer.toServerId(), false,
+					"connection request failed: " + error.getClass().getSimpleName(),
+					transfer.globalX(), transfer.globalY(), transfer.globalZ()));
+			return;
+		}
+
+		boolean alreadyThere = result.getStatus() == ConnectionRequestBuilder.Status.ALREADY_CONNECTED;
+		if (result.isSuccessful() || alreadyThere) {
+			logger.info("OpenDonut: {} is now on '{}' ({})", transfer.playerId(), transfer.toServerId(),
+					result.getStatus());
+			sendTo(sourceConnection, new BridgeMessage.TransferResult(transfer.playerId(),
+					transfer.fromServerId(), transfer.toServerId(), true, result.getStatus().name(),
+					transfer.globalX(), transfer.globalY(), transfer.globalZ()));
+
+			if (alreadyThere) {
+				// No ServerPostConnectEvent will fire, so the placement has to be delivered directly. Without
+				// this the player would stay wherever they were, which is the wrong side of the boundary.
+				deliverPlacement(transfer);
+			}
+			return;
+		}
+
+		routing.clearPending(transfer.playerId());
+		String reason = result.getStatus().name() + result.getReasonComponent()
+				.map(component -> " (" + component + ")")
+				.orElse("");
+		logger.warn("OpenDonut: could not move {} to '{}': {}", transfer.playerId(), transfer.toServerId(),
+				reason);
+		sendTo(sourceConnection, new BridgeMessage.TransferResult(transfer.playerId(),
+				transfer.fromServerId(), transfer.toServerId(), false, reason,
+				transfer.globalX(), transfer.globalY(), transfer.globalZ()));
+	}
+
+	/**
+	 * A player has finished connecting to a server: if they were being transferred, place them.
+	 *
+	 * <p>This is where the global coordinates reach the destination backend. It has to happen here rather than
+	 * before the connect, because Velocity can only send a plugin message through an established connection —
+	 * there is no "server to server" channel.
+	 *
+	 * @param event the post-connect event
+	 */
+	@Subscribe
+	public void onServerPostConnect(ServerPostConnectEvent event) {
+		if (!active) {
+			return;
+		}
+		Player player = event.getPlayer();
+		Optional<ProxyRoutingTable.PendingTransfer> maybeTransfer = routing.pending(player.getUniqueId());
+		if (maybeTransfer.isEmpty()) {
+			return;
+		}
+		ProxyRoutingTable.PendingTransfer transfer = maybeTransfer.get();
+
+		Optional<ServerConnection> currentServer = player.getCurrentServer();
+		String landedOn = currentServer.map(connection -> connection.getServerInfo().getName()).orElse("");
+		if (!landedOn.equals(transfer.toServerId())) {
+			// The player ended up somewhere else — a kick and reconnect, or another plugin redirecting them.
+			// The transfer is abandoned, and the backend that asked is told, so its failure policy applies.
+			routing.clearPending(player.getUniqueId());
+			logger.warn("OpenDonut: {} was being moved to '{}' but connected to '{}' instead; abandoning the "
+							+ "transfer", player.getUsername(), transfer.toServerId(),
+					landedOn.isEmpty() ? "nothing" : landedOn);
+			return;
+		}
+
+		deliverPlacement(transfer);
+		routing.clearPending(player.getUniqueId());
+	}
+
+	/**
+	 * Sends a placement instruction to the destination backend.
+	 *
+	 * @param transfer the transfer whose placement should be delivered
+	 */
+	private void deliverPlacement(ProxyRoutingTable.PendingTransfer transfer) {
+		Optional<Player> player = server.getPlayer(transfer.playerId());
+		if (player.isEmpty()) {
+			logger.warn("OpenDonut: cannot deliver a placement for {} because they are no longer connected",
+					transfer.playerId());
+			return;
+		}
+		Optional<ServerConnection> connection = player.get().getCurrentServer();
+		if (connection.isEmpty()) {
+			logger.warn("OpenDonut: cannot deliver a placement for {} because they are not on a server",
+					transfer.playerId());
+			return;
+		}
+		sendTo(connection.get(), routing.placementFor(transfer));
+		logger.debug("OpenDonut: told '{}' to place {} at global ({}, {}, {})",
+				connection.get().getServerInfo().getName(), transfer.playerId(), transfer.globalX(),
+				transfer.globalY(), transfer.globalZ());
+	}
+
+	/**
+	 * Forgets a player's transfer state when they disconnect.
+	 *
+	 * @param event the disconnect event
+	 */
+	@Subscribe
+	public void onDisconnect(DisconnectEvent event) {
+		if (routing != null) {
+			routing.clearPending(event.getPlayer().getUniqueId());
+		}
+	}
+
+	/**
+	 * Sends a bridge message to a backend through a connection.
+	 *
+	 * @param connection the connection
+	 * @param message the message
+	 */
+	private void sendTo(ServerConnection connection, BridgeMessage message) {
+		if (secret == null) {
+			return;
+		}
+		try {
+			byte[] frame = BridgeCodec.encode(message, secret);
+			boolean sent = connection.sendPluginMessage(channel, frame);
+			if (!sent) {
+				logger.warn("OpenDonut: the proxy refused to send a {} to backend '{}' (channel {} not "
+								+ "registered?)", message.type(), connection.getServerInfo().getName(),
+						channel.getId());
+			}
+		} catch (RuntimeException e) {
+			logger.error("OpenDonut: could not send a {} to backend '{}': {}", message.type(),
+					connection.getServerInfo().getName(), e.toString());
+		}
+	}
+
+	/**
+	 * Builds a failed transfer result.
+	 *
+	 * @param request the original request
+	 * @param toServerId the destination that was attempted, possibly empty
+	 * @param reason the explanation
+	 * @return the message
+	 */
+	private BridgeMessage.TransferResult failure(
+			BridgeMessage.TransferRequest request, String toServerId, String reason) {
+		logger.warn("OpenDonut: refusing to move {}: {}", request.playerName(), reason);
+		return new BridgeMessage.TransferResult(request.playerId(), request.fromServerId(), toServerId, false,
+				reason, request.globalX(), request.globalY(), request.globalZ());
+	}
+
+	/** @return whether the plugin is active and routing */
+	boolean isActive() {
+		return active;
+	}
+
+	/** @return the loaded configuration, or {@code null} when inactive */
+	OpenDonutConfig config() {
+		return config;
+	}
+
+	/** @return the routing table, or {@code null} when inactive */
+	ProxyRoutingTable routing() {
+		return routing;
+	}
+
+	/** @return the resolved network seed */
+	long resolvedSeed() {
+		return resolvedSeed;
+	}
+
+	/** @return the secret's fingerprint, so two machines can be compared without printing the secret */
+	String secretFingerprint() {
+		return secret == null ? "(no secret)" : BridgeSecret.fingerprint(secret);
+	}
+
+	/** @return the proxy this plugin is attached to */
+	ProxyServer server() {
+		return server;
+	}
+
+	/** @return the plugin logger */
+	Logger logger() {
+		return logger;
+	}
+
+	/** @return the plugin's data directory */
+	Path dataDirectory() {
+		return dataDirectory;
+	}
+
+	/** @return the channel identifier, or {@code null} before initialisation */
+	ChannelIdentifier channel() {
+		return channel;
+	}
+
+	/**
+	 * Tests whether the configuration file exists, for the startup message.
+	 *
+	 * @return {@code true} when the file is present
+	 */
+	boolean configurationExists() {
+		return Files.exists(dataDirectory.resolve("opendonut.yml"));
+	}
+
+	/** @return the player-facing name of a UUID, for messages; falls back to the UUID itself */
+	String nameOf(UUID playerId) {
+		return server.getPlayer(playerId).map(Player::getUsername).orElse(playerId.toString());
+	}
+}
