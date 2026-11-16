@@ -46,17 +46,26 @@ dependencies {
 /**
  * The version of the mod that ends up in fabric.mod.json, so the running server reports a real value
  * in its HELLO messages and in /opendonut info.
+ *
+ * The values are captured into locals at configuration time rather than read from `project` inside the
+ * `filesMatching` closure. That closure runs at execution time, and `Task.project` is deprecated there and
+ * removed in Gradle 10 — reading it would make this build a configuration-cache and Gradle 10 liability for no
+ * benefit.
  */
+def modVersion = project.version.toString()
+def targetMinecraftVersion = providers.gradleProperty('minecraft_version').get()
+def targetLoaderVersion = providers.gradleProperty('fabric_loader_version').get()
+
 processResources {
-	inputs.property 'version', project.version
-	inputs.property 'minecraft_version', providers.gradleProperty('minecraft_version').get()
-	inputs.property 'loader_version', providers.gradleProperty('fabric_loader_version').get()
+	inputs.property 'version', modVersion
+	inputs.property 'minecraft_version', targetMinecraftVersion
+	inputs.property 'loader_version', targetLoaderVersion
 
 	filesMatching('fabric.mod.json') {
 		expand(
-			version: project.version,
-			minecraft_version: providers.gradleProperty('minecraft_version').get(),
-			loader_version: providers.gradleProperty('fabric_loader_version').get()
+			version: modVersion,
+			minecraft_version: targetMinecraftVersion,
+			loader_version: targetLoaderVersion
 		)
 	}
 }

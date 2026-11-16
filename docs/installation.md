@@ -286,7 +286,7 @@ this pair of commands exists to reveal.
 The unit tests need nothing but the JDK:
 
 ```bash
-./gradlew test                                   # 186 tests
+./gradlew test                                   # 207 tests
 ./gradlew :common:toolsJar                       # the CLI
 java -jar common/build/libs/opendonut-tools-0.1.0-dev.jar check config/opendonut.example.yml
 ```

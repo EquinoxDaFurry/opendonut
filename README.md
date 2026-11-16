@@ -54,7 +54,7 @@ OpenDonut is at **0.1.0-dev**, an early prototype. Being precise about that is m
 
 | Area | State |
 |---|---|
-| Configuration engine (models, YAML loader, validator, region lookup, seed persistence, bridge protocol) | **Complete, with 186 unit tests passing** |
+| Configuration engine (models, YAML loader, validator, region lookup, seed persistence, bridge protocol) | **Complete, with 207 unit tests passing** |
 | Region lookup engine | **Complete.** Coordinate-compressed index with binary search, cross-checked against a reference implementation over randomised layouts |
 | Configuration validation | **Complete.** Detects duplicate ids, inverted and misaligned bounds, overlaps, gaps, out-of-border regions, invalid addresses, unknown keys, bad YAML — with file paths and line numbers |
 | Velocity plugin | **Implemented** against velocity-api 4.3.1: channel registration, HMAC-authenticated messages, authoritative routing, backend verification, connection requests, admin command |
@@ -212,7 +212,7 @@ and what lets an administrator ask the same questions the running system asks.
 ## Testing
 
 ```bash
-./gradlew test                       # 186 unit tests
+./gradlew test                       # 207 unit tests
 ./gradlew :common:toolsJar           # the self-contained admin CLI
 ```
 

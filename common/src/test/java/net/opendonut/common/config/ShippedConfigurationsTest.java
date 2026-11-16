@@ -60,6 +60,10 @@ class ShippedConfigurationsTest {
 		try (var entries = Files.list(configDirectory)) {
 			List<String> yamlFiles = entries
 					.filter(path -> path.getFileName().toString().endsWith(".yml"))
+					// `config/opendonut.yml` is the administrator's own working copy, not a shipped file: it is
+					// gitignored, it holds deployment-specific addresses, and it is expected to be edited. Only
+					// the files that are actually committed need to be covered here.
+					.filter(path -> !path.getFileName().toString().equals("opendonut.yml"))
 					.map(path -> "config/" + path.getFileName())
 					.sorted()
 					.toList();
