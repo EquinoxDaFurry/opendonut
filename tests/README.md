@@ -162,6 +162,21 @@ The transfer path itself (checklist items 5-11) has **not** been exercised with 
 against the real APIs and reviewed, and the failure modes are handled and logged, but until somebody walks
 across a boundary on a real client, treat it as untested. That is the first thing to do next.
 
+## Leftovers in this workspace
+
+Two directories exist in this workspace that OpenDonut does not own and does not need. They are listed here
+because they are easy to mistake for something the project requires, and because one of them holds a stale
+credential.
+
+| Path | What it is | Recommended action |
+|---|---|---|
+| `../Velocity/` (in the workspace root, outside this repository) | A Velocity installation assembled during an earlier attempt at this environment, before the path limitation below was understood. Its log shows it failing with the same `ProviderNotFoundException`, and its `velocity.toml` had player-info forwarding disabled at that point. It also carries its own `forwarding.secret` and bridge secret, which differ from the ones now in use everywhere else. | Delete it (`rmdir /s /q "..\Velocity"`), or keep it as a spare — but do not start it: it would advertise itself on `25565` with a different secret. |
+| `OpenDonut/secrets/bridge-secret.txt` | A bridge secret generated during the same earlier attempt, with a relative path. It is gitignored, nothing references it, and its value differs from the one installed on the two backends and the proxy. | Delete it. A stale secret that nothing uses is only a hazard: copying it by mistake produces `BAD_SIGNATURE` rejections that look like an attack. |
+
+The working proxy runtime lives at `%LOCALAPPDATA%\OpenDonut\velocity` — outside the workspace, because of the
+path limitation above — and holds the same bridge secret as both backends (`config/secrets/bridge-secret.txt` in
+this repository).
+
 ## Keeping the results honest
 
 When you run the checklist:

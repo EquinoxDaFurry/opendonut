@@ -1,0 +1,8 @@
+[04:34:17] [main/INFO] [com.velocitypowered.proxy.VelocityServer]: Booting up Velocity 4.3.1...
+[04:34:17] [main/INFO] [com.velocitypowered.proxy.network.ConnectionManager]: Connections will use NIO channels, Java compression, Java ciphers
+[04:34:17] [main/WARN] [com.velocitypowered.proxy.config.VelocityConfiguration]: Player info forwarding is disabled! All players will appear to be connecting from the proxy and will have offline-mode UUIDs.
+[04:34:17] [main/ERROR] [com.velocitypowered.proxy.console.VelocityConsole]: Exception in thread "main" java.nio.file.ProviderNotFoundException: Provider "jar" not found
+[04:34:17] [main/ERROR] [com.velocitypowered.proxy.console.VelocityConsole]: 	at java.base/java.nio.file.FileSystems.newFileSystem(FileSystems.java:342)
+[04:34:17] [main/ERROR] [com.velocitypowered.proxy.console.VelocityConsole]: 	at java.base/java.nio.file.FileSystems.newFileSystem(FileSystems.java:273)
+[04:34:17] [main/ERROR] [com.velocitypowered.proxy.console.VelocityConsole]: 	at com.velocitypowered.proxy.util.ResourceUtils.visitResources(ResourceUtils.java:64)
+[04:34:17] [main/ERROR] [com.velocitypowered.proxy.console.VelocityConsole]: 	at com.velocitypowered.proxy.VelocityServer.registerTranslations(VelocityServer.java:351)
