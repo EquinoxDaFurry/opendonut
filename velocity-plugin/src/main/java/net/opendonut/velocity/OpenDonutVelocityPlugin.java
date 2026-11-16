@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
@@ -445,12 +446,18 @@ public final class OpenDonutVelocityPlugin {
 			return;
 		}
 
-		if (!routing.mayReceivePlayers(destination.id())) {
+		// Whether the destination may receive a player, and on what terms. See ProxyRoutingTable.Admission: an
+		// unknown backend is admitted provisionally rather than refused, because requiring an announcement
+		// that only a player's arrival could trigger would deadlock the first transfer to every backend.
+		ProxyRoutingTable.Admission admission = routing.admissionFor(destination.id());
+		if (admission == ProxyRoutingTable.Admission.REFUSED) {
 			sendTo(connection, failure(request, destination.id(),
-					"backend '" + destination.id() + "' has not verified itself against the central "
-							+ "configuration yet, so it may not receive players. Its HELLO is logged on the "
-							+ "proxy; run /opendonut backends to see what it reported. Set "
-							+ "proxy.require-backend-hello: false to route to it anyway."));
+					"backend '" + destination.id() + "' announced itself and does not match the central "
+							+ "configuration, so no player is moved onto it: " + routing.refusalReason(
+									destination.id())
+							+ ". Fix that backend, then move a player to it explicitly (/server "
+							+ destination.id() + " <player>) or restart the proxy so it can announce itself "
+							+ "again."));
 			return;
 		}
 
@@ -476,9 +483,18 @@ public final class OpenDonutVelocityPlugin {
 				System.currentTimeMillis());
 		routing.markPending(transfer);
 
-		logger.info("OpenDonut: moving {} from '{}' to '{}' at global ({}, {}, {}) because {}",
-				player.getUsername(), sourceServerName, destination.id(), request.globalX(),
-				request.globalY(), request.globalZ(), request.reason());
+		if (admission == ProxyRoutingTable.Admission.PROVISIONAL) {
+			logger.info("OpenDonut: moving {} from '{}' to '{}' at global ({}, {}, {}) because {}. '{}' has "
+							+ "not announced itself yet — it will do so as this player arrives, and their "
+							+ "position is only applied once it verifies (within {} s).",
+					player.getUsername(), sourceServerName, destination.id(), request.globalX(),
+					request.globalY(), request.globalZ(), request.reason(), destination.id(),
+					config.proxy().arrivalVerificationTimeoutSeconds());
+		} else {
+			logger.info("OpenDonut: moving {} from '{}' to '{}' at global ({}, {}, {}) because {}",
+					player.getUsername(), sourceServerName, destination.id(), request.globalX(),
+					request.globalY(), request.globalZ(), request.reason());
+		}
 
 		player.createConnectionRequest(target.get()).connect()
 				.whenComplete((result, error) -> completeTransfer(connection, transfer, result, error));
@@ -569,8 +585,124 @@ public final class OpenDonutVelocityPlugin {
 			return;
 		}
 
-		deliverPlacement(transfer);
-		routing.clearPending(player.getUniqueId());
+		// The player has arrived. Whether their position may be applied depends on whether this backend has
+		// proven itself yet.
+		switch (routing.admissionFor(transfer.toServerId())) {
+			case ADMITTED -> {
+				// Verified (or verification is off): place them and be done.
+				deliverPlacement(transfer);
+				routing.clearPending(player.getUniqueId());
+			}
+			case REFUSED -> {
+				routing.clearPending(player.getUniqueId());
+				returnPlayer(player, transfer, "it announced itself on arrival and does not match the central "
+						+ "configuration: " + routing.refusalReason(transfer.toServerId()));
+			}
+			case PROVISIONAL -> {
+				// Nothing heard yet. The backend is announcing itself right now — its HELLO travels through this
+				// very player's connection — so wait briefly for the verdict instead of guessing.
+				routing.clearPending(player.getUniqueId());
+				awaitVerification(player, transfer);
+			}
+		}
+	}
+
+	/**
+	 * Waits for an arriving backend to announce itself, then places the player or returns them.
+	 *
+	 * <h2>Why the wait is necessary</h2>
+	 * A backend sends its {@code HELLO} from its own player-join handling, which happens a moment <em>after</em>
+	 * Velocity fires {@link ServerPostConnectEvent}. Checking the admission state once, here, would therefore
+	 * always see "unknown" for a backend's first transfer and bounce a player who had done nothing wrong. The
+	 * check is repeated on a short timer until the verdict arrives or the configured window expires.
+	 *
+	 * <p>Meanwhile the player is on the destination but has <em>not</em> been given their arrival coordinates,
+	 * so they stand wherever the destination put them while this decision is made — a few hundred milliseconds
+	 * in practice. That is the deliberate trade for not deadlocking the first transfer.
+	 *
+	 * @param player the arriving player
+	 * @param transfer the transfer being verified
+	 */
+	private void awaitVerification(Player player, ProxyRoutingTable.PendingTransfer transfer) {
+		long timeoutMillis = config.proxy().arrivalVerificationTimeoutMillis();
+		long startedAt = System.currentTimeMillis();
+		long pollMillis = 200L;
+
+		logger.info("OpenDonut: waiting up to {} ms for backend '{}' to announce itself, so that {} can be "
+						+ "placed at their arrival coordinates",
+				timeoutMillis, transfer.toServerId(), player.getUsername());
+
+		server.getScheduler().buildTask(this, task -> {
+			Optional<Player> stillConnected = server.getPlayer(transfer.playerId());
+			if (stillConnected.isEmpty()) {
+				task.cancel();
+				return;
+			}
+			Player arriving = stillConnected.get();
+
+			switch (routing.admissionFor(transfer.toServerId())) {
+				case ADMITTED -> {
+					task.cancel();
+					logger.info("OpenDonut: backend '{}' verified itself; placing {}",
+							transfer.toServerId(), arriving.getUsername());
+					deliverPlacement(transfer);
+				}
+				case REFUSED -> {
+					task.cancel();
+					returnPlayer(arriving, transfer, "it announced itself and does not match the central "
+							+ "configuration: " + routing.refusalReason(transfer.toServerId()));
+				}
+				case PROVISIONAL -> {
+					if (System.currentTimeMillis() - startedAt >= timeoutMillis) {
+						task.cancel();
+						returnPlayer(arriving, transfer, "it did not announce itself within "
+								+ (timeoutMillis / 1000) + " second(s), so the proxy could not verify that it "
+								+ "is generating the same world");
+					}
+				}
+			}
+		}).delay(pollMillis, TimeUnit.MILLISECONDS).repeat(pollMillis, TimeUnit.MILLISECONDS).schedule();
+	}
+
+	/**
+	 * Sends a player back to the server they were being transferred from.
+	 *
+	 * <p>Used when a destination turns out not to be trustworthy after the player has already been moved to it:
+	 * it announced itself and failed verification, or it never announced itself at all. Leaving the player
+	 * there would mean standing on a backend that may be generating a different world, in a region this proxy
+	 * cannot reason about, which is exactly the state the verification exists to prevent.
+	 *
+	 * @param player the player to return
+	 * @param transfer the transfer that is being abandoned
+	 * @param reason the explanation, for the log and for the backend's failure policy
+	 */
+	private void returnPlayer(Player player, ProxyRoutingTable.PendingTransfer transfer, String reason) {
+		logger.warn("OpenDonut: {} cannot stay on '{}' because {}, returning them to '{}'",
+				player.getUsername(), transfer.toServerId(), reason, transfer.fromServerId());
+
+		Optional<RegisteredServer> source = server.getServer(transfer.fromServerId());
+		if (source.isEmpty()) {
+			logger.error("OpenDonut: cannot return {} to '{}' because the proxy has no such server "
+							+ "registered. They stay on '{}'; move them manually.",
+					player.getUsername(), transfer.fromServerId(), transfer.toServerId());
+			return;
+		}
+
+		player.createConnectionRequest(source.get()).connect().whenComplete((result, error) -> {
+			if (error != null || !result.isSuccessful()) {
+				String status = error != null ? error.getClass().getSimpleName() : result.getStatus().name();
+				logger.error("OpenDonut: could not return {} to '{}' ({}). They stay on '{}'; move them "
+								+ "manually.", player.getUsername(), transfer.fromServerId(), status,
+						transfer.toServerId());
+				return;
+			}
+			logger.info("OpenDonut: returned {} to '{}'", player.getUsername(), transfer.fromServerId());
+			// Tell the backend that asked, through the connection the player is now on, so it can clear its
+			// pending transfer and apply its failure policy.
+			player.getCurrentServer().ifPresent(current -> sendTo(current, new BridgeMessage.TransferResult(
+					transfer.playerId(), transfer.fromServerId(), transfer.toServerId(), false, reason,
+					transfer.globalX(), transfer.globalY(), transfer.globalZ())));
+		});
 	}
 
 	/**

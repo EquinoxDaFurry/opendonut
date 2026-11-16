@@ -94,7 +94,7 @@ class ProxyRoutingTableTest {
 			assertTrue(verdict.accepted(), verdict.detail());
 			assertTrue(verdict.state().verified());
 			assertTrue(verdict.detail().contains("match"), verdict.detail());
-			assertTrue(table.mayReceivePlayers("west"));
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, table.admissionFor("west"));
 		}
 
 		@Test
@@ -105,7 +105,7 @@ class ProxyRoutingTableTest {
 			ProxyRoutingTable.Verdict verdict = hello("west", "east", "world", 1234L, west(), MINECRAFT_VERSION);
 			assertFalse(verdict.accepted());
 			assertTrue(verdict.detail().contains("the proxy knows"), verdict.detail());
-			assertFalse(table.mayReceivePlayers("east"));
+			assertEquals(ProxyRoutingTable.Admission.REFUSED, table.admissionFor("east"));
 		}
 
 		@Test
@@ -163,20 +163,87 @@ class ProxyRoutingTableTest {
 		}
 
 		@Test
-		@DisplayName("require-backend-hello defaults to true, so an unverified backend is not routed to")
-		void requiresAVerifiedHelloByDefault() {
+		@DisplayName("require-backend-hello defaults to true")
+		void verificationIsOnByDefault() {
+			// What that means for a backend nobody has heard from is covered by AdmissionTest: it is admitted
+			// provisionally rather than refused, because refusing it would deadlock the first transfer.
 			assertTrue(config.proxy().requireBackendHello(), "the documented default is the safe one");
-			assertFalse(table.mayReceivePlayers("west"), "nothing has been heard from west yet");
 		}
 
 		@Test
 		@DisplayName("verification state is recorded and replaced by a later HELLO")
 		void stateIsReplaced() {
 			hello("west", "west", "world", 999L, west(), MINECRAFT_VERSION);
-			assertFalse(table.mayReceivePlayers("west"));
+			assertEquals(ProxyRoutingTable.Admission.REFUSED, table.admissionFor("west"));
 			hello("west", "west", "world", 1234L, west(), MINECRAFT_VERSION);
-			assertTrue(table.mayReceivePlayers("west"), "a fixed backend must be able to recover");
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, table.admissionFor("west"),
+					"a fixed backend must be able to recover");
 			assertEquals(1, table.backends().size(), "one entry per backend, not per HELLO");
+		}
+	}
+
+	@Nested
+	@DisplayName("admission: how a backend may receive a player")
+	class AdmissionTest {
+
+		@Test
+		@DisplayName("an unknown backend is admitted provisionally, never refused")
+		void unknownBackendIsProvisional() {
+			// This is the bootstrap rule, and the reason it exists: a backend announces itself only through a
+			// player's connection, so a backend that has never had a player cannot have announced itself.
+			// Refusing it would make the first transfer to every backend impossible - the transfer is what
+			// would give it its first player. Verified in production: 'east' was refused with "has not
+			// verified itself yet" while running perfectly, because nobody had ever been sent there.
+			assertTrue(config.proxy().requireBackendHello(), "the documented default");
+			assertEquals(ProxyRoutingTable.Admission.PROVISIONAL, table.admissionFor("east"),
+					"nothing has been heard from east, so it is admitted provisionally");
+		}
+
+		@Test
+		@DisplayName("a backend that announced itself and matches is admitted outright")
+		void verifiedBackendIsAdmitted() {
+			hello("west", "west", "world", 1234L, west(), MINECRAFT_VERSION);
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, table.admissionFor("west"));
+		}
+
+		@Test
+		@DisplayName("a backend that announced itself and does not match is refused, with the reason kept")
+		void mismatchedBackendIsRefused() {
+			hello("west", "west", "world", 999L, west(), MINECRAFT_VERSION);
+			assertEquals(ProxyRoutingTable.Admission.REFUSED, table.admissionFor("west"),
+					"a known-bad backend must never receive a player");
+			assertTrue(table.refusalReason("west").contains("seed"),
+					"the refusal must carry the backend's own explanation: " + table.refusalReason("west"));
+		}
+
+		@Test
+		@DisplayName("with verification switched off everything is admitted, including an unknown backend")
+		void verificationCanBeDisabled() {
+			// The escape hatch for an operator who would rather have transfers than verification. It is
+			// documented as such, and it does not change the bootstrap rule - it removes the check entirely.
+			OpenDonutConfig relaxed = ConfigLoader
+					.loadFromString(TWO_SERVERS + "proxy:\n  require-backend-hello: false\n", "relaxed.yml")
+					.requireUsable();
+			assertFalse(relaxed.proxy().requireBackendHello());
+
+			ProxyRoutingTable withoutVerification = new ProxyRoutingTable(relaxed);
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, withoutVerification.admissionFor("east"),
+					"an unknown backend is admitted when verification is off");
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, withoutVerification.admissionFor("west"));
+
+			// And a backend that mismatches is still admitted, which is exactly what the setting warns about.
+			withoutVerification.acceptHello("west", "west", "world", 999L, west(), MINECRAFT_VERSION,
+					"0.1.0-dev", 1234L, MINECRAFT_VERSION);
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, withoutVerification.admissionFor("west"));
+		}
+
+		@Test
+		@DisplayName("the routing table output says that an unannounced backend is normal, not broken")
+		void routingTableOutputExplainsTheBootstrap() {
+			String output = table.describeRegions(List.of("west", "east"));
+			assertTrue(output.contains("not yet announced"), output);
+			String backends = table.describeBackends();
+			assertTrue(backends.contains("normal, not broken"), backends);
 		}
 	}
 
@@ -276,7 +343,9 @@ class ProxyRoutingTableTest {
 			assertTrue(before.contains("west"), before);
 			assertTrue(before.contains("east"), before);
 			assertTrue(before.contains("X=[-100000,0)"), before);
-			assertTrue(before.contains("[no HELLO yet]"), before);
+			// Deliberately not "[no HELLO yet]": an unannounced backend is not a problem to be fixed, it is the
+			// normal state of one nobody has been sent to, and the output says what will happen instead.
+			assertTrue(before.contains("not yet announced"), before);
 
 			hello("west", "west", "world", 1234L, west(), MINECRAFT_VERSION);
 			String after = table.describeRegions(List.of("west", "east"));
@@ -310,8 +379,9 @@ class ProxyRoutingTableTest {
 		void tablesAreIndependent() {
 			ProxyRoutingTable other = new ProxyRoutingTable(config);
 			hello("west", "west", "world", 1234L, west(), MINECRAFT_VERSION);
-			assertTrue(table.mayReceivePlayers("west"));
-			assertFalse(other.mayReceivePlayers("west"), "a second table must not inherit the first one's state");
+			assertEquals(ProxyRoutingTable.Admission.ADMITTED, table.admissionFor("west"));
+			assertEquals(ProxyRoutingTable.Admission.PROVISIONAL, other.admissionFor("west"),
+					"a second table must not inherit the first one's state");
 			assertNotSame(table.owner(0, 0), other.owner(0, 0).orElseThrow());
 			assertEquals(table.owner(0, 0).orElseThrow().id(), other.owner(0, 0).orElseThrow().id());
 		}

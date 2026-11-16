@@ -130,6 +130,39 @@ The causes, in order of frequency:
 3. **Seed mismatch.** See below.
 4. **Wrong region.** The backend reports a rectangle the configuration does not give that id.
 
+## "backend 'x' has not verified itself ... so it may not receive players" — but the backend is running fine
+
+**Symptom:** a transfer is refused with that message, `/opendonut backends` lists only the server the player is
+already on, and the refused backend is perfectly healthy.
+
+That backend has simply never had a player, and a backend can only announce itself **through a player's
+connection** — Velocity has no server-to-server plugin message path. So a backend nobody has been sent to has
+nothing to announce itself through. (This was a real defect up to 0.1.0-dev revision 3ce16b8: the proxy
+required an announcement that only a transfer could trigger, which deadlocked the very first transfer to any
+backend. It is fixed; see [architecture.md § 6.4.1](architecture.md#641-the-bootstrap-problem-and-why-an-unknown-backend-is-admitted-provisionally).)
+
+What you should see with a current build:
+
+* `/opendonut regions` labels such a backend `[not yet announced — a transfer will verify it on arrival]`;
+* walking into that backend's region moves you there, and the backend announces itself as you arrive. If it
+  verifies, you are placed at your arrival coordinates and everything is normal from then on;
+* if it *does not* verify — wrong seed, level name or region — you are returned to the server you came from
+  within `proxy.arrival-verification-timeout-seconds` (5 by default), and the backend is refused for every
+  later transfer until it is fixed.
+
+If you see the refusal message above on a current build, that backend has *announced itself and failed*
+verification. The message now carries its own explanation, and `/opendonut backends` shows it in full, for
+example:
+
+```
+east   X=[0,100000) Z=[-100000,100000)  seed=12345  mc=26.3  REJECTED: its world seed is 12345 but the
+       network resolved 8275902214569690041; terrain would not line up across the boundary
+```
+
+Fix the backend (usually: copy the same `opendonut.yml`, or set the right `level-seed`), then move a player to
+it explicitly with `/server east <player>` on the proxy console, or restart the proxy, so it can announce
+itself again.
+
 ## `BAD_MAGIC`: the proxy refuses every frame from a backend
 
 **Symptom:** the backend detects a boundary crossing and asks for a transfer, the proxy logs

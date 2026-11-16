@@ -260,18 +260,39 @@ Ignored by the backends.
 proxy:
   auto-register-backends: true
   require-backend-hello: true
+  arrival-verification-timeout-seconds: 5
   disconnect-unrouted-players: false
 ```
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `auto-register-backends` | boolean | `true` | Register every `servers` entry with the proxy at startup, so `velocity.toml` does not have to list them. A name `velocity.toml` already defines is left alone; the file wins |
-| `require-backend-hello` | boolean | `true` | Only route to a backend that has sent a `HELLO` whose id, region, level name and seed match this file. Set to `false` only while bringing a new backend online |
+| `require-backend-hello` | boolean | `true` | Verify every backend against this file before placing players on it. See the three admission states below |
+| `arrival-verification-timeout-seconds` | 1–30 | `5` | How long the proxy may hold an arriving player on a backend that has not verified itself yet, before returning them to where they came from. Keep it shorter than `transfer.max-pending-seconds` (the validator says so if you do not) |
 | `disconnect-unrouted-players` | boolean | `false` | Whether a player routed into an unowned coordinate is disconnected. `false` leaves them where they are, which is the gentler default |
 
-`require-backend-hello: true` is the setting that turns the routing table from "what the file says" into "what
-the backends actually are, verified". Leaving it `true` is strongly recommended: it is the check that notices a
-backend generating a different world before a player walks into the seam.
+### How a backend becomes trusted
+
+A backend announces itself with a `HELLO`, and the only channel it has is a player's connection — Velocity has
+no server-to-server plugin message path. So **a backend that has never had a player cannot have announced
+itself**, and requiring an announcement before allowing a transfer would deadlock the first transfer to every
+backend. `require-backend-hello: true` therefore has three outcomes rather than two:
+
+| The backend… | Result |
+|---|---|
+| has announced itself and matches this file | **Admitted.** Players are moved and placed immediately |
+| has never announced itself | **Admitted provisionally.** The player is moved, which makes the backend announce itself; the arrival coordinates are withheld until it verifies, and the player is returned to where they came from if it does not verify within `arrival-verification-timeout-seconds` |
+| has announced itself and does **not** match | **Refused.** No player is moved onto it. Its own explanation is logged and returned to the requesting backend |
+
+So "unannounced" is a normal state, not a problem to fix: `/opendonut regions` labels it
+`[not yet announced — a transfer will verify it on arrival]`. A backend that was *refused* can be brought back
+into service by fixing it and then moving a player to it explicitly (`/server <id> <player>` on the proxy
+console) or restarting the proxy, so that it announces itself again.
+
+Leaving `require-backend-hello` at `true` is strongly recommended: it is the check that notices a backend
+generating a different world before a player walks into the seam. Setting it to `false` routes to any
+registered backend without verification, which is only sensible when you are certain every backend is
+generating the same world.
 
 ---
 

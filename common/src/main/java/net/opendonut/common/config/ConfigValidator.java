@@ -323,6 +323,22 @@ public final class ConfigValidator {
 					"only one server is configured: OpenDonut will never transfer a player, which is a "
 							+ "valid way to stage a rollout");
 		}
+
+		// The proxy holds an arriving player on a backend that has not announced itself yet, and the backend
+		// gives up on the whole transfer after transfer.max-pending-seconds. If the proxy's window is the
+		// longer of the two, the backend reverts the player while the proxy is still deciding, and the two
+		// sides race for the same player. Not fatal - the player ends up somewhere safe either way - but it
+		// makes failures confusing, so it is worth saying out loud.
+		long proxyWindow = config.proxy().arrivalVerificationTimeoutMillis();
+		long backendWindow = config.transfer().maxPendingSeconds() * 1000L;
+		if (proxyWindow >= backendWindow) {
+			issues.add(IssueCode.DERIVED_VALUE, "proxy", sourceMap.line("proxy"),
+					"proxy.arrival-verification-timeout-seconds (" + proxyWindow / 1000
+							+ " s) is not shorter than transfer.max-pending-seconds ("
+							+ config.transfer().maxPendingSeconds()
+							+ " s), so a backend can give up on a transfer before the proxy has finished "
+							+ "verifying the destination. Lower the proxy timeout, or raise the backend one.");
+		}
 	}
 
 	/**

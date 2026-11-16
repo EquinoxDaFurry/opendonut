@@ -254,16 +254,68 @@ final class ProxyRoutingTable {
 	}
 
 	/**
-	 * Tests whether a backend has proven itself and may therefore receive players.
+	 * Whether a backend may receive a player, and on what terms.
+	 *
+	 * <h2>Why there are three answers and not two</h2>
+	 * A backend announces itself with a {@code HELLO}, and the only channel it has is a player's connection —
+	 * Velocity has no server-to-server plugin message path. So a backend that has never had a player
+	 * <em>cannot</em> have announced itself, and a rule of "only transfer to a verified backend" would deadlock
+	 * the first transfer to every backend: the transfer is what would give it its first player.
+	 *
+	 * <p>Hence three states rather than a boolean:
+	 * <ul>
+	 *   <li>{@link Admission#ADMITTED} — verified, or verification is switched off. Place the player
+	 *       immediately.</li>
+	 *   <li>{@link Admission#PROVISIONAL} — nothing has been heard from this backend. Move the player, which
+	 *       makes it announce itself, but <em>withhold the arrival coordinates</em> until it verifies. If it
+	 *       does not verify within the configured window, the player is sent back where they came from.</li>
+	 *   <li>{@link Admission#REFUSED} — the backend announced itself and did <em>not</em> match: wrong world,
+	 *       seed or region. A player is never moved onto it, because that is the case the verification exists
+	 *       to catch. It can be brought back into service by moving a player to it explicitly
+	 *       ({@code /server <id> <player>} on the proxy console), which lets it announce itself again.</li>
+	 * </ul>
+	 */
+	enum Admission {
+
+		/** Verified, or verification is disabled: the player may be placed immediately. */
+		ADMITTED,
+
+		/** Nothing heard from this backend: admit, but verify during the arrival and withhold the position. */
+		PROVISIONAL,
+
+		/** This backend has announced itself and does not match: never send a player to it. */
+		REFUSED
+	}
+
+	/**
+	 * Decides how a backend may receive a player.
 	 *
 	 * @param serverId the backend's id
-	 * @return {@code true} when a transfer to this backend is allowed
+	 * @return the admission state
 	 */
-	boolean mayReceivePlayers(String serverId) {
+	Admission admissionFor(String serverId) {
 		if (!config.proxy().requireBackendHello()) {
-			return true;
+			return Admission.ADMITTED;
 		}
-		return backend(serverId).map(BackendState::verified).orElse(false);
+		Optional<BackendState> state = backend(serverId);
+		if (state.isEmpty()) {
+			return Admission.PROVISIONAL;
+		}
+		return state.get().verified() ? Admission.ADMITTED : Admission.REFUSED;
+	}
+
+	/**
+	 * The explanation for a refused backend, for a log line or a failure report.
+	 *
+	 * @param serverId the backend's id
+	 * @return the reason the backend reported, or a generic message when nothing has been heard from it
+	 */
+	String refusalReason(String serverId) {
+		return backend(serverId)
+				.map(state -> state.verified()
+						? "it verifies, so it should not have been refused"
+						: state.detail())
+				.orElse("nothing has been heard from it");
 	}
 
 	/**
@@ -357,10 +409,10 @@ final class ProxyRoutingTable {
 			if (!registrationNames.contains(server.id())) {
 				out.append("  [not registered with the proxy]");
 			}
-			if (backend(server.id()).isPresent()) {
-				out.append(backend(server.id()).get().verified() ? "  [verified]" : "  [rejected]");
-			} else {
-				out.append("  [no HELLO yet]");
+			switch (admissionFor(server.id())) {
+				case ADMITTED -> out.append(backend(server.id()).isPresent() ? "  [verified]" : "  [unverified]");
+				case PROVISIONAL -> out.append("  [not yet announced — a transfer will verify it on arrival]");
+				case REFUSED -> out.append("  [REJECTED]");
 			}
 		}
 		return out.toString();
@@ -375,7 +427,9 @@ final class ProxyRoutingTable {
 		Collection<BackendState> states = backends();
 		if (states.isEmpty()) {
 			return "No backend has announced itself yet. A backend sends its HELLO when its first player "
-					+ "connects, because plugin messages travel through a player's connection.";
+					+ "connects, because plugin messages travel through a player's connection — so a backend "
+					+ "that has never had a player is normal, not broken. Transfers to it are verified while the "
+					+ "player arrives.";
 		}
 		StringBuilder out = new StringBuilder("Backends that have announced themselves:");
 		for (BackendState state : states) {

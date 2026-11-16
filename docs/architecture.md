@@ -308,6 +308,36 @@ established connection. There is no server-to-server channel. `ServerPostConnect
 moment the coordinates can be delivered — and the destination backend holds them until it applies them, so an
 instruction that arrives a tick early is not lost.
 
+### 6.4.1 The bootstrap problem, and why an unknown backend is admitted provisionally
+
+A backend announces itself with a `HELLO`, and the only channel a Fabric mod has is a player's connection.
+Velocity offers no server-to-server plugin message path. Put those two facts together and you get a rule that
+is easy to miss when designing the verification:
+
+> A backend that has never had a player **cannot** have announced itself.
+
+So "only transfer to a backend that has sent a valid HELLO" cannot be the whole rule: the first transfer to
+every backend would be refused, because the transfer is the very thing that would give that backend its first
+player. The system would deadlock on itself, and the symptom is confusing — the refused backend is running
+perfectly and simply has nothing to announce itself through.
+
+The proxy therefore has three admission states rather than a yes/no answer:
+
+| State | When | What happens |
+|---|---|---|
+| `ADMITTED` | The backend verified, or `proxy.require-backend-hello` is `false` | The player is moved and their arrival coordinates are applied immediately |
+| `PROVISIONAL` | Nothing has been heard from the backend | The player is moved — which makes the backend announce itself — but the arrival coordinates are **withheld** until it verifies. If it verifies, the placement is applied; if it does not within `proxy.arrival-verification-timeout-seconds`, the player is **returned to the server they came from** |
+| `REFUSED` | The backend announced itself and did **not** match: wrong world, seed or region | No player is ever moved onto it. This is the case the verification exists to catch |
+
+The trade-off in the `PROVISIONAL` row is deliberate and worth stating: for a few hundred milliseconds the
+player stands on a backend that has not yet been verified, and that backend may briefly load chunks around
+them. The alternative — refusing — is a permanent deadlock, and a backend generates its own spawn chunks
+regardless. The window is bounded, the check still happens, and a mismatch still results in the player being
+taken off that backend and that backend being refused for every subsequent transfer.
+
+Recovery for a `REFUSED` backend: fix it, then move a player to it explicitly (`/server <id> <player>` on the
+proxy console) or restart the proxy, so it can announce itself again.
+
 ### 6.5 Anti-loop and failure handling
 
 The classic failure mode of any multi-server boundary is oscillation: two servers each decide the other should

@@ -58,8 +58,9 @@ final class ConfigParser {
 			Set.of("require-full-coverage", "strict-chunk-alignment", "unknown-fields");
 	private static final Set<String> BRIDGE_KEYS =
 			Set.of("enabled", "channel", "secret-file", "timestamp-tolerance-seconds");
-	private static final Set<String> PROXY_KEYS =
-			Set.of("auto-register-backends", "require-backend-hello", "disconnect-unrouted-players");
+	private static final Set<String> PROXY_KEYS = Set.of(
+			"auto-register-backends", "require-backend-hello", "disconnect-unrouted-players",
+			"arrival-verification-timeout-seconds");
 	private static final Set<String> TRANSFER_KEYS = Set.of(
 			"boundary-margin-blocks", "join-grace-ticks", "cooldown-seconds", "max-pending-seconds",
 			"on-transfer-failure", "unassigned-area-policy");
@@ -372,9 +373,16 @@ final class ConfigParser {
 				settings.requireBackendHello());
 		Boolean disconnect = yaml.readBoolean(entries, "disconnect-unrouted-players", "proxy",
 				settings.disconnectUnroutedPlayers());
+		Integer arrivalTimeout = yaml.readInt(entries, "arrival-verification-timeout-seconds", "proxy",
+				settings.arrivalVerificationTimeoutSeconds(), false);
 		yaml.reportUnknownKeys(entries, "proxy", PROXY_KEYS, policy);
 
-		return new ProxySettings(autoRegister, requireHello, disconnect);
+		try {
+			return new ProxySettings(autoRegister, requireHello, disconnect, arrivalTimeout);
+		} catch (IllegalArgumentException e) {
+			yaml.report(IssueCode.INVALID_VALUE, "proxy", YamlAccess.lineOf(mapping), e.getMessage());
+			return settings;
+		}
 	}
 
 	private TransferSettings parseTransfer(Node node, UnknownFieldPolicy policy) {

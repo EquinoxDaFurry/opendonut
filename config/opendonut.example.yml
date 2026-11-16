@@ -106,11 +106,28 @@ proxy:
   # in velocity.toml.
   auto-register-backends: true
 
-  # Only route players to a backend that has sent a valid HELLO whose world name,
-  # seed and region match this file. Set to false only while bringing a new
-  # backend online, because it lets the proxy route to a backend that is
-  # generating different terrain.
+  # Verify every backend against this file before placing players on it.
+  #
+  # A backend can only announce itself through a player's connection, so a
+  # backend that has never had a player cannot have announced itself yet. Those
+  # two facts would deadlock the very first transfer, so an unknown backend is
+  # admitted *provisionally*: the player is moved, which makes the backend
+  # announce itself, and the arrival coordinates are only applied once the
+  # backend verifies. If it does not verify, the player is sent back to the
+  # server they came from.
+  #
+  # A backend that has announced itself and does NOT match is refused outright:
+  # a player is never moved onto it.
+  #
+  # Set to false only if you accept players being placed on a backend whose
+  # world, seed or region does not match this file.
   require-backend-hello: true
+
+  # How long the proxy may hold an arriving player on a backend that has not
+  # verified itself yet, in seconds. Keep it shorter than
+  # transfer.max-pending-seconds below, otherwise a backend gives up on the
+  # transfer before the proxy has finished deciding.
+  arrival-verification-timeout-seconds: 5
 
   # What to do with a player who is routed into a coordinate that no server owns.
   # false (default): leave them where they are. true: disconnect with a message,
