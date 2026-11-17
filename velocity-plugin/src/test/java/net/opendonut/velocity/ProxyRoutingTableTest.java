@@ -282,8 +282,12 @@ class ProxyRoutingTableTest {
 	class PendingTransfers {
 
 		private ProxyRoutingTable.PendingTransfer transfer(UUID playerId, long issuedAt) {
+			return transfer(playerId, issuedAt, "");
+		}
+
+		private ProxyRoutingTable.PendingTransfer transfer(UUID playerId, long issuedAt, String dimension) {
 			return new ProxyRoutingTable.PendingTransfer(playerId, "west", "east", 0, 64, -1500, 90.0f, 0.0f,
-					"past max-x", issuedAt);
+					"past max-x", issuedAt, dimension);
 		}
 
 		@Test
@@ -329,6 +333,48 @@ class ProxyRoutingTableTest {
 			assertEquals(90.0f, placement.yaw());
 			assertEquals(0.0f, placement.pitch());
 			assertEquals(pending.issuedAtMillis(), placement.issuedAtMillis());
+		}
+
+		@Test
+		@DisplayName("a noted dimension is consumed exactly once by the next transfer, never left stale")
+		void dimensionIsConsumedOnce() {
+			UUID playerId = UUID.randomUUID();
+			assertTrue(table.consumeDimension(playerId).isEmpty());
+
+			table.noteDimension(playerId, "minecraft:the_nether");
+			assertEquals(Optional.of("minecraft:the_nether"), table.consumeDimension(playerId));
+			// A second consume finds nothing: a report can never be attached to a later, unrelated transfer.
+			assertTrue(table.consumeDimension(playerId).isEmpty());
+		}
+
+		@Test
+		@DisplayName("clearing a pending transfer also drops the noted dimension")
+		void clearPendingDropsDimension() {
+			UUID playerId = UUID.randomUUID();
+			table.noteDimension(playerId, "minecraft:the_nether");
+			table.markPending(transfer(playerId, System.currentTimeMillis()));
+			table.clearPending(playerId);
+			assertTrue(table.consumeDimension(playerId).isEmpty());
+		}
+
+		@Test
+		@DisplayName("a transfer with a dimension yields a PLACE_DIMENSION for the destination")
+		void placementDimensionBuilt() {
+			UUID playerId = UUID.randomUUID();
+			ProxyRoutingTable.PendingTransfer pending =
+					transfer(playerId, System.currentTimeMillis(), "minecraft:the_nether");
+			Optional<BridgeMessage.PlaceDimension> dim = table.placementDimensionFor(pending);
+			assertTrue(dim.isPresent());
+			assertEquals(playerId, dim.get().playerId());
+			assertEquals("minecraft:the_nether", dim.get().dimension());
+		}
+
+		@Test
+		@DisplayName("a transfer without a dimension (older source) yields no PLACE_DIMENSION")
+		void noDimensionNoMessage() {
+			ProxyRoutingTable.PendingTransfer pending = transfer(UUID.randomUUID(),
+					System.currentTimeMillis(), "");
+			assertTrue(table.placementDimensionFor(pending).isEmpty());
 		}
 	}
 

@@ -284,25 +284,39 @@ Design notes:
 | `PLACE_PLAYER` | proxy → backend | "Put this arriving player at these global coordinates" |
 | `TIME_REPORT` | backend → proxy | "My reading of world clock C right now" — only the configured authority's reading is trusted |
 | `TIME_SET` | proxy → backend | "Set world clock C to this reading" — sent on hello, on arrival, and periodically |
+| `TRANSFER_DIMENSION` | backend → proxy | "Player X is currently in dimension D" — sent right before the `TRANSFER_REQUEST` for the same move |
+| `PLACE_DIMENSION` | proxy → backend | "Place arriving player X in dimension D" — sent right after the `PLACE_PLAYER` for the same transfer |
+
+`TRANSFER_REQUEST`/`PLACE_PLAYER` cannot carry a dimension field — their fields are frozen — so the dimension
+travels in its own pair of messages (ids 13–14). The pair is sent on the same connection, in order, which is
+what keeps a dimension from being attached to the wrong transfer. The coordinates are global and shared, so
+the arrival is a cross-level teleport to the *same* coordinates: no nether/overworld scaling. An old build on
+either side refuses the unknown id cleanly (`UNKNOWN_MESSAGE_TYPE`) and the transfer then behaves exactly as it
+did before dimensions were synchronised.
 
 ### 6.4 The transfer protocol, step by step
 
 ```
- backend W                     proxy                         backend E
-    │                            │                               │
-    │ player walks past max-x    │                               │
-    ├── TRANSFER_REQUEST ───────►│                               │
-    │   (HMAC, hint "east")      │ authenticate                  │
-    │                            │ check source is a backend     │
-    │                            │ re-derive owner from ITS table│
-    │                            │ check E verified itself       │
-    │                            │ record pending transfer       │
-    │                            ├── connection request ────────►│
-    │◄─ TRANSFER_RESULT ok ──────┤                               │
-    │                            │                               │ player connects
-    │                            ├── PLACE_PLAYER ──────────────►│
-    │                            │   (global x, y, z, yaw, pitch)│ teleport next tick
-    │                            │                               │ grace period starts
+  backend W                     proxy                         backend E
+     │                            │                               │
+     │ player walks past max-x    │                               │
+     ├─────────►│   TRANSFER_DIMENSION               │
+     │   (player, e.g. nether)    │                               │
+     ├─────────►│   TRANSFER_REQUEST                 │
+     │   (HMAC, hint "east")      │ authenticate                  │
+     │                            │ check source is a backend     │
+     │                            │ re-derive owner from ITS table│
+     │                            │ attach noted dimension        │
+     │                            │ check E verified itself       │
+     │                            │ record pending transfer       │
+     │                            ├────────► connection request │
+     │◄ TRANSFER_RESULT ok ──────┤                               │
+     │                            │                               │ player connects
+     │                            ├──────────────► PLACE_PLAYER│
+     │                            │   (global x, y, z, yaw, pitch)│ teleport next tick
+     │                            ├────────────► PLACE_DIMENSION│
+     │                            │   (player, dimension)         │ cross-level teleport next tick
+     │                            │                               │ grace period starts
 ```
 
 Why the placement arrives *after* the connect: Velocity's `ServerConnection.sendPluginMessage` needs an

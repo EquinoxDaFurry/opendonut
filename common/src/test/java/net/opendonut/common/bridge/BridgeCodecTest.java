@@ -182,6 +182,24 @@ class BridgeCodecTest {
 		}
 
 		@Test
+		@DisplayName("TRANSFER_DIMENSION survives encoding and decoding intact")
+		void transferDimension() {
+			BridgeMessage.TransferDimension sent =
+					new BridgeMessage.TransferDimension(UUID.randomUUID(), "minecraft:the_nether");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("PLACE_DIMENSION survives encoding and decoding intact")
+		void placeDimension() {
+			BridgeMessage.PlaceDimension sent =
+					new BridgeMessage.PlaceDimension(UUID.randomUUID(), "minecraft:overworld");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
 		@DisplayName("encoding a message whose payload would exceed the frame limit is refused, not truncated")
 		void oversizedPayloadRefused() {
 			byte[] tooBig = new byte[BridgeCodec.MAX_PAYLOAD_BYTES + 1];

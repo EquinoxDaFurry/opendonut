@@ -95,6 +95,9 @@ final class ProxyRoutingTable {
 	 * @param pitch the pitch to preserve
 	 * @param reason the backend's explanation, for the log
 	 * @param issuedAtMillis when the proxy accepted the request
+	 * @param dimension the dimension the player was in when they left, reported by the source in a
+	 *                  {@code TRANSFER_DIMENSION}; empty when the source did not say (an older build), in
+	 *                  which case the destination keeps its own idea of the dimension
 	 */
 	record PendingTransfer(
 			UUID playerId,
@@ -106,7 +109,8 @@ final class ProxyRoutingTable {
 			float yaw,
 			float pitch,
 			String reason,
-			long issuedAtMillis) {
+			long issuedAtMillis,
+			String dimension) {
 	}
 
 	/**
@@ -123,6 +127,15 @@ final class ProxyRoutingTable {
 	private final RegionIndex index;
 	private final Map<String, BackendState> backends = new ConcurrentHashMap<>();
 	private final Map<UUID, PendingTransfer> pending = new ConcurrentHashMap<>();
+
+	/**
+	 * The last dimension each backend reported for a player, via {@code TRANSFER_DIMENSION}.
+	 *
+	 * <p>The report arrives on the same connection, immediately before the {@code TRANSFER_REQUEST}, and is
+	 * consumed into the transfer when that request is accepted. Kept separate from the transfer map so that
+	 * the two messages cannot race each other.
+	 */
+	private final Map<UUID, String> notedDimensions = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates the table.
@@ -344,6 +357,7 @@ final class ProxyRoutingTable {
 	 * @return the transfer that was removed, or empty when there was none
 	 */
 	Optional<PendingTransfer> clearPending(UUID playerId) {
+		notedDimensions.remove(playerId);
 		return Optional.ofNullable(pending.remove(playerId));
 	}
 
@@ -374,6 +388,27 @@ final class ProxyRoutingTable {
 	}
 
 	/**
+	 * Records the dimension a backend just reported for a player.
+	 *
+	 * @param playerId the player
+	 * @param dimension the registry id of the level the player is in, for example {@code minecraft:the_nether}
+	 */
+	void noteDimension(UUID playerId, String dimension) {
+		notedDimensions.put(playerId, dimension);
+	}
+
+	/**
+	 * Takes the last reported dimension for a player, removing it, so a stale report can never be attached to
+	 * a later, unrelated transfer.
+	 *
+	 * @param playerId the player
+	 * @return the dimension, or empty when the source never reported one (an older build)
+	 */
+	Optional<String> consumeDimension(UUID playerId) {
+		return Optional.ofNullable(notedDimensions.remove(playerId));
+	}
+
+	/**
 	 * Builds the placement message for a transfer.
 	 *
 	 * @param transfer the transfer
@@ -390,6 +425,20 @@ final class ProxyRoutingTable {
 				transfer.yaw(),
 				transfer.pitch(),
 				transfer.issuedAtMillis());
+	}
+
+	/**
+	 * Builds the dimension instruction for a transfer, to be sent right after the {@code PLACE_PLAYER}.
+	 *
+	 * @param transfer the transfer
+	 * @return the message, or empty when the transfer carries no dimension (the source was an older build),
+	 *         in which case the destination keeps its own idea of the dimension, as it always has
+	 */
+	Optional<BridgeMessage.PlaceDimension> placementDimensionFor(PendingTransfer transfer) {
+		if (transfer.dimension().isEmpty()) {
+			return Optional.empty();
+		}
+		return Optional.of(new BridgeMessage.PlaceDimension(transfer.playerId(), transfer.dimension()));
 	}
 
 	/**

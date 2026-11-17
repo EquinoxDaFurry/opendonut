@@ -95,6 +95,13 @@ final class BackendBridge {
 		 * @param set the instruction
 		 */
 		void onTimeSet(BridgeMessage.TimeSet set);
+
+		/**
+		 * The proxy said which dimension an arriving player should be placed in.
+		 *
+		 * @param dim the instruction
+		 */
+		void onPlaceDimension(BridgeMessage.PlaceDimension dim);
 	}
 
 	private final byte[] secret;
@@ -204,9 +211,13 @@ final class BackendBridge {
 			case BridgeMessage.PlayerDataSaveResult result -> listener.onPlayerDataSaveResult(result);
 			case BridgeMessage.PlayerDataFlushRequest request -> listener.onPlayerDataFlushRequest(request);
 			case BridgeMessage.TimeSet set -> listener.onTimeSet(set);
+			case BridgeMessage.PlaceDimension dim -> listener.onPlaceDimension(dim);
 			case BridgeMessage.TimeReport ignored -> logger.warn(
 					"OpenDonut: the proxy sent a TIME_REPORT to a backend; only backends report their clock. "
 							+ "Ignoring it.");
+			case BridgeMessage.TransferDimension ignored -> logger.warn(
+					"OpenDonut: the proxy sent a TRANSFER_DIMENSION to a backend; only backends report their "
+							+ "dimension. Ignoring it.");
 			case BridgeMessage.Hello ignored -> logger.warn(
 					"OpenDonut: the proxy sent a HELLO to a backend; that message only travels the other way. "
 							+ "Ignoring it.");
@@ -269,6 +280,22 @@ final class BackendBridge {
 				entity.getXRot(),
 				requestedServerId,
 				reason);
+	}
+
+	/**
+	 * Builds the dimension report for a transfer request, from the player's current level.
+	 *
+	 * <p>Sent on the same connection immediately before the {@code TRANSFER_REQUEST}, so the proxy can attach
+	 * it to that transfer; the pair is ordered, which is what keeps the dimension from landing on the wrong
+	 * transfer.
+	 *
+	 * @param player the player leaving
+	 * @return the message
+	 */
+	static BridgeMessage.TransferDimension transferDimension(ServerPlayer player) {
+		return new BridgeMessage.TransferDimension(
+				player.getUUID(),
+				player.level().dimension().identifier().toString());
 	}
 
 	/** @return how many frames this backend has sent */

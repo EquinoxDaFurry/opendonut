@@ -605,6 +605,10 @@ public final class OpenDonutVelocityPlugin {
 			case BridgeMessage.TimeSet set -> logger.warn(
 					"OpenDonut: backend '{}' sent a TIME_SET; only the proxy may set world time. Ignoring it.",
 					connection.getServerInfo().getName());
+			case BridgeMessage.TransferDimension dim -> handleTransferDimension(connection, dim);
+			case BridgeMessage.PlaceDimension dim -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLACE_DIMENSION; only the proxy may place dimensions. "
+							+ "Ignoring it.", connection.getServerInfo().getName());
 		}
 	}
 
@@ -814,6 +818,35 @@ public final class OpenDonutVelocityPlugin {
 	}
 
 	/**
+	 * Handles a backend's report of which dimension a player is standing in.
+	 *
+	 * <p>The report arrives immediately before the {@code TRANSFER_REQUEST} for the same move, on the same
+	 * connection, and is consumed when that request is accepted — so a dimension can never be attached to the
+	 * wrong transfer. The same "the player must actually be on the reporting server" check as for a transfer
+	 * request applies: the report is only trusted from the connection the player is really on.
+	 *
+	 * @param connection the reporting backend's connection
+	 * @param dim the report
+	 */
+	private void handleTransferDimension(ServerConnection connection, BridgeMessage.TransferDimension dim) {
+		String sourceServerName = connection.getServerInfo().getName();
+		Optional<Player> maybePlayer = server.getPlayer(dim.playerId());
+		if (maybePlayer.isEmpty()) {
+			return;
+		}
+		Optional<ServerConnection> currentServer = maybePlayer.get().getCurrentServer();
+		if (currentServer.isEmpty() || !currentServer.get().getServerInfo().getName().equals(sourceServerName)) {
+			logger.warn("OpenDonut: backend '{}' reported a dimension for {} but that player is on '{}'; "
+					+ "ignoring the report", sourceServerName, maybePlayer.get().getUsername(),
+					currentServer.map(server -> server.getServerInfo().getName()).orElse("no server"));
+			return;
+		}
+		routing.noteDimension(dim.playerId(), dim.dimension());
+		logger.debug("OpenDonut: backend '{}' reports {} is in dimension {}", sourceServerName,
+				maybePlayer.get().getUsername(), dim.dimension());
+	}
+
+	/**
 	 * Handles a request to move a player.
 	 *
 	 * @param connection the requesting backend's connection
@@ -893,6 +926,9 @@ public final class OpenDonutVelocityPlugin {
 
 		routing.pruneStale(TRANSFER_MAX_AGE_MILLIS);
 
+		// The dimension the source reported just before this request, if any: an older backend does not send
+		// one, and then the transfer carries an empty dimension and the destination keeps its own idea of it.
+		String dimension = routing.consumeDimension(request.playerId()).orElse("");
 		ProxyRoutingTable.PendingTransfer transfer = new ProxyRoutingTable.PendingTransfer(
 				request.playerId(),
 				sourceServerName,
@@ -903,7 +939,8 @@ public final class OpenDonutVelocityPlugin {
 				request.yaw(),
 				request.pitch(),
 				request.reason(),
-				System.currentTimeMillis());
+				System.currentTimeMillis(),
+				dimension);
 		routing.markPending(transfer);
 
 		// With player-data sync on, the source must commit the player's snapshot before the connection
@@ -1188,6 +1225,15 @@ public final class OpenDonutVelocityPlugin {
 			return;
 		}
 		sendTo(connection.get(), routing.placementFor(transfer));
+		// The dimension rides right behind the placement: the destination applies both together, so the
+		// player lands at the placement coordinates in the dimension they left in. Sent only when the source
+		// reported one; an older destination build refuses the unknown message id cleanly and simply places
+		// the player as it always has.
+		routing.placementDimensionFor(transfer).ifPresent(dimension -> {
+			sendTo(connection.get(), dimension);
+			logger.debug("OpenDonut: told '{}' to place {} in dimension {}",
+					connection.get().getServerInfo().getName(), transfer.playerId(), dimension.dimension());
+		});
 		logger.debug("OpenDonut: told '{}' to place {} at global ({}, {}, {})",
 				connection.get().getServerInfo().getName(), transfer.playerId(), transfer.globalX(),
 				transfer.globalY(), transfer.globalZ());

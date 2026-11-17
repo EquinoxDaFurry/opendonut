@@ -111,7 +111,29 @@ public enum MessageType {
 	 * periodically to every non-authority backend, so that all backends converge on the authority's clock.
 	 * The destination applies it to its own {@code ServerClockManager} and resynchronises its players.
 	 */
-	TIME_SET(12);
+	TIME_SET(12),
+
+	/**
+	 * Backend to proxy. "Player X is currently in dimension D."
+	 *
+	 * <p>Sent on the same player connection immediately before a {@code TRANSFER_REQUEST}, so that the proxy
+	 * can attach the departure dimension to the transfer. {@code PLACE_PLAYER} cannot carry it — its fields
+	 * are frozen — so the dimension travels in this message and in {@link #PLACE_DIMENSION}. An old build
+	 * that does not know this id refuses it cleanly with {@code UNKNOWN_MESSAGE_TYPE}, and the transfer then
+	 * proceeds exactly as it did before dimensions were synchronised.
+	 */
+	TRANSFER_DIMENSION(13),
+
+	/**
+	 * Proxy to backend. "Place arriving player X in dimension D."
+	 *
+	 * <p>Sent right after the {@code PLACE_PLAYER} for the same transfer. The destination applies it with a
+	 * cross-level teleport to the placement coordinates, so a player who left the nether on one backend
+	 * arrives in the nether on the other, at the same global coordinates (OpenDonut's premise is one shared
+	 * coordinate space, so no nether/overworld scaling is applied). An old backend refuses this id cleanly
+	 * and simply places the player in whatever dimension its local player data says, as before.
+	 */
+	PLACE_DIMENSION(14);
 
 	private final int wireId;
 

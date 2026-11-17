@@ -36,7 +36,8 @@ public sealed interface BridgeMessage
 		BridgeMessage.TransferResult, BridgeMessage.PlacePlayer, BridgeMessage.PlayerDataLoadRequest,
 		BridgeMessage.PlayerDataLoadResponse, BridgeMessage.PlayerDataSaveRequest,
 		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest,
-		BridgeMessage.TimeReport, BridgeMessage.TimeSet {
+		BridgeMessage.TimeReport, BridgeMessage.TimeSet,
+		BridgeMessage.TransferDimension, BridgeMessage.PlaceDimension {
 
 	/**
 	 * The wire type of this message.
@@ -548,6 +549,68 @@ public sealed interface BridgeMessage
 		@Override
 		public MessageType type() {
 			return MessageType.TIME_SET;
+		}
+	}
+
+	/**
+	 * Backend to proxy: the dimension a player is standing in when they leave.
+	 *
+	 * <p>Sent on the player's own connection immediately before the {@code TRANSFER_REQUEST} for the same
+	 * move, so the proxy can attach it to the pending transfer. {@code TRANSFER_REQUEST} cannot carry it
+	 * (its fields are frozen), which is why this message exists.
+	 *
+	 * @param playerId the player
+	 * @param dimension the registry id of the level the player is in, for example
+	 *                  {@code minecraft:the_nether}
+	 */
+	record TransferDimension(
+			UUID playerId,
+			String dimension) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public TransferDimension {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(dimension, "dimension");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.TRANSFER_DIMENSION;
+		}
+	}
+
+	/**
+	 * Proxy to backend: the dimension an arriving player should be placed in.
+	 *
+	 * <p>Sent right after the {@code PLACE_PLAYER} for the same transfer, carrying the dimension the source
+	 * reported in its {@code TRANSFER_DIMENSION}. The destination applies it with a cross-level teleport to
+	 * the placement coordinates — same global coordinates, other dimension, with no nether scaling, because
+	 * OpenDonut backends share one coordinate space.
+	 *
+	 * @param playerId the arriving player
+	 * @param dimension the registry id of the level to place them in
+	 */
+	record PlaceDimension(
+			UUID playerId,
+			String dimension) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlaceDimension {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(dimension, "dimension");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLACE_DIMENSION;
 		}
 	}
 }

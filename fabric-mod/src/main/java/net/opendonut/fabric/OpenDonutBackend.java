@@ -6,11 +6,16 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.dedicated.DedicatedServerProperties;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 
 import org.slf4j.Logger;
@@ -686,6 +691,12 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		String reason = describeDeparture(player.blockPosition().getX(), player.blockPosition().getZ(),
 				distanceOutside);
 
+		// The dimension is reported first, on the same connection, so the proxy can attach it to this very
+		// request: the pair is ordered, which is what keeps the dimension from landing on the wrong transfer.
+		// If this frame cannot be sent the request still goes out, and the arrival simply carries no
+		// dimension — the destination then keeps its own idea of it, exactly as before dimensions were synced.
+		bridge.send(player, BackendBridge.transferDimension(player));
+
 		BridgeMessage.TransferRequest request = BackendBridge.transferRequest(
 				player, self.id(), destination.id(), reason);
 
@@ -722,11 +733,18 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 * arrival is exact to the block, not to the sub-block. Their Y is used unchanged, because a player
 	 * standing on a block top is already at an integer Y and shifting it risks placing them inside a block.
 	 *
+	 * <p>When the proxy also sent a {@code PLACE_DIMENSION} for this arrival, the player is moved to that
+	 * level at the same global coordinates, with a real cross-level teleport. The coordinates are shared
+	 * across the network, so no nether/overworld scaling is applied: a player who left the nether at
+	 * (x, y, z) arrives in the nether at (x, y, z). Without the instruction — an older proxy — the player
+	 * stays in whatever level their local data put them in, exactly as before dimensions were synchronised.
+	 *
 	 * @param player the arriving player
 	 * @param placement the instruction
 	 */
 	private void applyPlacement(ServerPlayer player, PlayerTransferTracker.Placement placement) {
 		tracker.takePlacement(player.getUUID());
+		String dimension = tracker.takeArrivalDimension(player.getUUID()).orElse("");
 
 		if (!placement.playerId().equals(player.getUUID())) {
 			logger.warn("OpenDonut: ignoring an arrival instruction addressed to {} but delivered to {}",
@@ -745,14 +763,59 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		double targetY = placement.globalY();
 		double targetZ = placement.globalZ() + 0.5d;
 
-		player.connection.teleport(targetX, targetY, targetZ, placement.yaw(), placement.pitch());
+		String currentDimension = player.level().dimension().identifier().toString();
+		boolean placedInOtherDimension = false;
+		if (!dimension.isEmpty() && !dimension.equals(currentDimension)) {
+			ServerLevel target = resolveLevel(dimension);
+			if (target == null) {
+				// A dimension this server does not have (a removed datapack): place them in the current
+				// level rather than dropping the arrival entirely.
+				logger.warn("OpenDonut: the proxy wants {} placed in dimension '{}' but this server has no "
+						+ "such level; placing them in '{}' instead", player.getName().getString(),
+						dimension, currentDimension);
+			} else {
+				// A real cross-level teleport, the same call /teleport uses: same global coordinates, other
+				// level, no nether scaling, because the backends share one coordinate space.
+				placedInOtherDimension = player.teleportTo(target, targetX, targetY, targetZ, Set.of(),
+						placement.yaw(), placement.pitch(), true);
+				if (!placedInOtherDimension) {
+					logger.warn("OpenDonut: the cross-level teleport of {} to '{}' was refused; placing them "
+							+ "in '{}' instead", player.getName().getString(), dimension, currentDimension);
+				}
+			}
+		}
+		if (!placedInOtherDimension) {
+			player.connection.teleport(targetX, targetY, targetZ, placement.yaw(), placement.pitch());
+		}
 		// The player is now legitimately here: restart the grace period and drop any stale request.
 		tracker.clearPending(player.getUUID(), System.currentTimeMillis(), config.transfer().cooldownSeconds());
 		tracker.markJoined(player.getUUID(), server.getTickCount());
 
-		logger.info("OpenDonut: placed {} at global ({}, {}, {}) after arriving from '{}'",
-				player.getName().getString(), placement.globalX(), placement.globalY(), placement.globalZ(),
-				placement.fromServerId().isEmpty() ? "unknown" : placement.fromServerId());
+		if (dimension.isEmpty() || dimension.equals(currentDimension)) {
+			logger.info("OpenDonut: placed {} at global ({}, {}, {}) after arriving from '{}'",
+					player.getName().getString(), placement.globalX(), placement.globalY(),
+					placement.globalZ(),
+					placement.fromServerId().isEmpty() ? "unknown" : placement.fromServerId());
+		} else {
+			logger.info("OpenDonut: placed {} at global ({}, {}, {}) in dimension '{}' after arriving from "
+					+ "'{}'", player.getName().getString(), placement.globalX(), placement.globalY(),
+					placement.globalZ(), dimension,
+					placement.fromServerId().isEmpty() ? "unknown" : placement.fromServerId());
+		}
+	}
+
+	/**
+	 * Resolves a dimension id to a loaded level.
+	 *
+	 * @param dimension the registry id, for example {@code minecraft:the_nether}
+	 * @return the level, or {@code null} when the id is malformed or the server has no such level
+	 */
+	private ServerLevel resolveLevel(String dimension) {
+		Identifier id = Identifier.tryParse(dimension);
+		if (id == null) {
+			return null;
+		}
+		return server.getLevel(ResourceKey.create(Registries.DIMENSION, id));
 	}
 
 	/**
@@ -892,6 +955,14 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		logger.debug("OpenDonut: queued an arrival of {} at ({}, {}, {}) from '{}'",
 				placement.playerId(), placement.globalX(), placement.globalY(), placement.globalZ(),
 				placement.fromServerId());
+	}
+
+	@Override
+	public void onPlaceDimension(BridgeMessage.PlaceDimension dim) {
+		// Stored separately from the placement so the two messages can arrive in either order; both are
+		// consumed together when the placement is applied.
+		tracker.storeArrivalDimension(dim.playerId(), dim.dimension());
+		logger.debug("OpenDonut: queued dimension {} for arriving player {}", dim.dimension(), dim.playerId());
 	}
 
 	@Override

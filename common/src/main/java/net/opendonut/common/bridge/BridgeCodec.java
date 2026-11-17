@@ -441,6 +441,14 @@ public final class BridgeCodec {
 					out.writeBoolean(set.paused());
 					out.writeUTF(set.reason());
 				}
+				case BridgeMessage.TransferDimension dim -> {
+					writeUuid(out, dim.playerId());
+					out.writeUTF(dim.dimension());
+				}
+				case BridgeMessage.PlaceDimension dim -> {
+					writeUuid(out, dim.playerId());
+					out.writeUTF(dim.dimension());
+				}
 			}
 			out.flush();
 			return buffer.toByteArray();
@@ -487,6 +495,10 @@ public final class BridgeCodec {
 					in.readUTF(), in.readLong(), in.readFloat(), in.readBoolean());
 			case TIME_SET -> new BridgeMessage.TimeSet(
 					in.readUTF(), in.readLong(), in.readFloat(), in.readBoolean(), in.readUTF());
+			case TRANSFER_DIMENSION -> new BridgeMessage.TransferDimension(
+					readUuid(in), in.readUTF());
+			case PLACE_DIMENSION -> new BridgeMessage.PlaceDimension(
+					readUuid(in), in.readUTF());
 		};
 	}
 

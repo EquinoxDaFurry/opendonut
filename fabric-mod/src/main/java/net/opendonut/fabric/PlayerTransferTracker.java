@@ -77,6 +77,16 @@ final class PlayerTransferTracker {
 
 	private final Map<UUID, PendingTransfer> pending = new HashMap<>();
 	private final Map<UUID, Placement> placements = new HashMap<>();
+
+	/**
+	 * The dimension the proxy said an arriving player should be placed in, via {@code PLACE_DIMENSION}.
+	 *
+	 * <p>Kept separately from the placement so the two messages can arrive in either order; both are consumed
+	 * together when the placement is applied. Empty/absent means "leave the dimension alone", which is what
+	 * an older proxy produces.
+	 */
+	private final Map<UUID, String> arrivalDimensions = new HashMap<>();
+
 	private final Map<UUID, Long> cooldownUntil = new HashMap<>();
 	private final Map<UUID, Long> joinTick = new HashMap<>();
 
@@ -191,6 +201,26 @@ final class PlayerTransferTracker {
 	}
 
 	/**
+	 * Stores the dimension the proxy wants an arriving player placed in.
+	 *
+	 * @param playerId the arriving player
+	 * @param dimension the registry id of the level, for example {@code minecraft:the_nether}
+	 */
+	void storeArrivalDimension(UUID playerId, String dimension) {
+		arrivalDimensions.put(playerId, dimension);
+	}
+
+	/**
+	 * Takes the stored arrival dimension for a player, removing it.
+	 *
+	 * @param playerId the player
+	 * @return the dimension, or empty when the proxy sent none
+	 */
+	Optional<String> takeArrivalDimension(UUID playerId) {
+		return Optional.ofNullable(arrivalDimensions.remove(playerId));
+	}
+
+	/**
 	 * Records whether a player is currently standing in an unassigned coordinate.
 	 *
 	 * @param playerId the player
@@ -212,6 +242,7 @@ final class PlayerTransferTracker {
 	void forget(UUID playerId) {
 		pending.remove(playerId);
 		placements.remove(playerId);
+		arrivalDimensions.remove(playerId);
 		cooldownUntil.remove(playerId);
 		joinTick.remove(playerId);
 		inUnassignedArea.remove(playerId);
@@ -227,9 +258,11 @@ final class PlayerTransferTracker {
 	 * @return the number of players forgotten
 	 */
 	int retainOnly(Collection<UUID> online) {
-		List<UUID> known = new ArrayList<>(pending.size() + placements.size() + joinTick.size());
+		List<UUID> known = new ArrayList<>(pending.size() + placements.size() + joinTick.size()
+				+ arrivalDimensions.size());
 		known.addAll(pending.keySet());
 		known.addAll(placements.keySet());
+		known.addAll(arrivalDimensions.keySet());
 		known.addAll(joinTick.keySet());
 
 		int forgotten = 0;
