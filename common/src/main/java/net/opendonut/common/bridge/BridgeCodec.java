@@ -10,7 +10,9 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -449,6 +451,8 @@ public final class BridgeCodec {
 					writeUuid(out, dim.playerId());
 					out.writeUTF(dim.dimension());
 				}
+				case BridgeMessage.TransferPortal portal -> writePortal(out, portal.playerId(), portal.portal());
+				case BridgeMessage.PlacePortal portal -> writePortal(out, portal.playerId(), portal.portal());
 			}
 			out.flush();
 			return buffer.toByteArray();
@@ -499,6 +503,8 @@ public final class BridgeCodec {
 					readUuid(in), in.readUTF());
 			case PLACE_DIMENSION -> new BridgeMessage.PlaceDimension(
 					readUuid(in), in.readUTF());
+			case TRANSFER_PORTAL -> new BridgeMessage.TransferPortal(readUuid(in), readPortal(in));
+			case PLACE_PORTAL -> new BridgeMessage.PlacePortal(readUuid(in), readPortal(in));
 		};
 	}
 
@@ -556,6 +562,61 @@ public final class BridgeCodec {
 	 */
 	private static UUID readUuid(DataInputStream in) throws IOException {
 		return new UUID(in.readLong(), in.readLong());
+	}
+
+	/**
+	 * The most block entries a portal payload may carry. A nether portal frame is at most a few dozen blocks; the
+	 * cap exists so a hostile or buggy frame cannot make the reader allocate a huge list inside the already
+	 * bounded 64 KiB payload.
+	 */
+	private static final int MAX_PORTAL_BLOCKS = 1024;
+
+	/**
+	 * Writes a portal payload: player id, then the block box.
+	 *
+	 * @param out the stream
+	 * @param playerId the player
+	 * @param portal the payload
+	 * @throws IOException if the stream fails
+	 */
+	private static void writePortal(
+			DataOutputStream out, UUID playerId, BridgeMessage.PortalBlocks portal) throws IOException {
+		writeUuid(out, playerId);
+		out.writeUTF(portal.dimension());
+		out.writeInt(portal.originX());
+		out.writeInt(portal.originY());
+		out.writeInt(portal.originZ());
+		out.writeInt(portal.blocks().size());
+		for (BridgeMessage.BlockEntry entry : portal.blocks()) {
+			out.writeInt(entry.dx());
+			out.writeInt(entry.dy());
+			out.writeInt(entry.dz());
+			writeByteArray(out, entry.nbt());
+		}
+	}
+
+	/**
+	 * Reads a portal payload written by {@link #writePortal}.
+	 *
+	 * @param in the stream positioned at the dimension
+	 * @return the payload
+	 * @throws IOException if the stream fails or the counts are absurd
+	 */
+	private static BridgeMessage.PortalBlocks readPortal(DataInputStream in) throws IOException {
+		String dimension = in.readUTF();
+		int originX = in.readInt();
+		int originY = in.readInt();
+		int originZ = in.readInt();
+		int count = in.readInt();
+		if (count < 0 || count > MAX_PORTAL_BLOCKS) {
+			throw new IOException("frame declares " + count + " portal blocks but at most " + MAX_PORTAL_BLOCKS
+					+ " are allowed");
+		}
+		List<BridgeMessage.BlockEntry> blocks = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			blocks.add(new BridgeMessage.BlockEntry(in.readInt(), in.readInt(), in.readInt(), readByteArray(in)));
+		}
+		return new BridgeMessage.PortalBlocks(dimension, originX, originY, originZ, blocks);
 	}
 
 	/**

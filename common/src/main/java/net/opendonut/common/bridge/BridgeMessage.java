@@ -1,6 +1,7 @@
 package net.opendonut.common.bridge;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,7 +38,8 @@ public sealed interface BridgeMessage
 		BridgeMessage.PlayerDataLoadResponse, BridgeMessage.PlayerDataSaveRequest,
 		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest,
 		BridgeMessage.TimeReport, BridgeMessage.TimeSet,
-		BridgeMessage.TransferDimension, BridgeMessage.PlaceDimension {
+		BridgeMessage.TransferDimension, BridgeMessage.PlaceDimension,
+		BridgeMessage.TransferPortal, BridgeMessage.PlacePortal {
 
 	/**
 	 * The wire type of this message.
@@ -611,6 +613,133 @@ public sealed interface BridgeMessage
 		@Override
 		public MessageType type() {
 			return MessageType.PLACE_DIMENSION;
+		}
+	}
+
+	/**
+	 * One block of a portal payload: an offset from the origin plus the block state as opaque NBT bytes.
+	 *
+	 * <p>The common module has no Minecraft dependency, so the block state travels as the bytes
+	 * {@code NbtIo.write(NbtUtils.writeBlockState(state), ...)} produced by the backend; the destination
+	 * decodes it with the matching reader. {@code equals}/{@code hashCode} compare the bytes by content, because a
+	 * record's default would compare the array by reference.
+	 *
+	 * @param dx offset east of the origin
+	 * @param dy offset above the origin
+	 * @param dz offset south of the origin
+	 * @param nbt the serialised block state
+	 */
+	record BlockEntry(int dx, int dy, int dz, byte[] nbt) {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if the nbt is missing
+		 */
+		public BlockEntry {
+			Objects.requireNonNull(nbt, "nbt");
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			return other instanceof BlockEntry entry
+					&& dx == entry.dx && dy == entry.dy && dz == entry.dz
+					&& Arrays.equals(nbt, entry.nbt);
+		}
+
+		@Override
+		public int hashCode() {
+			return 31 * (31 * (31 * dx + dy) + dz) + Arrays.hashCode(nbt);
+		}
+
+		@Override
+		public String toString() {
+			return "BlockEntry[(" + dx + ", " + dy + ", " + dz + "), " + nbt.length + " bytes]";
+		}
+	}
+
+	/**
+	 * The block payload shared by {@link TransferPortal} and {@link PlacePortal}: a small box of non-air blocks
+	 * around a portal's far side, to be recreated on the other server.
+	 *
+	 * @param dimension the registry id of the level the origin is in, for example {@code minecraft:overworld}
+	 * @param originX the origin block X (the arrival point the box is centred on)
+	 * @param originY the origin block Y
+	 * @param originZ the origin block Z
+	 * @param blocks the blocks, offsets relative to the origin; never null, possibly empty
+	 */
+	record PortalBlocks(
+			String dimension,
+			int originX,
+			int originY,
+			int originZ,
+			List<BlockEntry> blocks) {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PortalBlocks {
+			Objects.requireNonNull(dimension, "dimension");
+			blocks = List.copyOf(Objects.requireNonNull(blocks, "blocks"));
+		}
+	}
+
+	/**
+	 * Backend to proxy: the blocks around the far side of a portal a player just used to leave the region.
+	 *
+	 * <p>Sent on the player's own connection immediately before the {@code TRANSFER_REQUEST} for the same move.
+	 *
+	 * @param playerId the player
+	 * @param portal the block payload
+	 */
+	record TransferPortal(
+			UUID playerId,
+			PortalBlocks portal) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public TransferPortal {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(portal, "portal");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.TRANSFER_PORTAL;
+		}
+	}
+
+	/**
+	 * Proxy to backend: recreate these blocks in this level when the player arrives.
+	 *
+	 * <p>Sent right after the {@code PLACE_DIMENSION} for the same transfer, carrying what the source sent in its
+	 * {@code TRANSFER_PORTAL}.
+	 *
+	 * @param playerId the arriving player
+	 * @param portal the block payload
+	 */
+	record PlacePortal(
+			UUID playerId,
+			PortalBlocks portal) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlacePortal {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(portal, "portal");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLACE_PORTAL;
 		}
 	}
 }

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -195,6 +196,31 @@ class BridgeCodecTest {
 		void placeDimension() {
 			BridgeMessage.PlaceDimension sent =
 					new BridgeMessage.PlaceDimension(UUID.randomUUID(), "minecraft:overworld");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("TRANSFER_PORTAL survives encoding and decoding intact, block bytes compared by content")
+		void transferPortal() {
+			BridgeMessage.TransferPortal sent = new BridgeMessage.TransferPortal(
+					UUID.randomUUID(),
+					new BridgeMessage.PortalBlocks("minecraft:overworld", 8, 70, -1500,
+							List.of(new BridgeMessage.BlockEntry(0, 0, 0, new byte[] {1, 2, 3}),
+									new BridgeMessage.BlockEntry(-3, 4, 2, new byte[] {9, 8, 7, 6, 5}))));
+			BridgeMessage.TransferPortal received = assertInstanceOf(BridgeMessage.TransferPortal.class,
+					decodeOrFail(BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()),
+							SECRET, new NonceCache()));
+			assertEquals(sent, received);
+			assertArrayEquals(new byte[] {1, 2, 3}, received.portal().blocks().get(0).nbt());
+		}
+
+		@Test
+		@DisplayName("PLACE_PORTAL survives encoding and decoding intact, including an empty block list")
+		void placePortal() {
+			BridgeMessage.PlacePortal sent = new BridgeMessage.PlacePortal(
+					UUID.randomUUID(),
+					new BridgeMessage.PortalBlocks("minecraft:the_nether", 0, 40, 0, List.of()));
 			assertEquals(sent, decodeOrFail(
 					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
 		}

@@ -1,9 +1,17 @@
 package net.opendonut.fabric;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import org.slf4j.Logger;
@@ -102,6 +110,13 @@ final class BackendBridge {
 		 * @param dim the instruction
 		 */
 		void onPlaceDimension(BridgeMessage.PlaceDimension dim);
+
+		/**
+		 * The proxy said which blocks to recreate around an arriving player's portal.
+		 *
+		 * @param portal the instruction
+		 */
+		void onPlacePortal(BridgeMessage.PlacePortal portal);
 	}
 
 	private final byte[] secret;
@@ -212,6 +227,10 @@ final class BackendBridge {
 			case BridgeMessage.PlayerDataFlushRequest request -> listener.onPlayerDataFlushRequest(request);
 			case BridgeMessage.TimeSet set -> listener.onTimeSet(set);
 			case BridgeMessage.PlaceDimension dim -> listener.onPlaceDimension(dim);
+			case BridgeMessage.PlacePortal portal -> listener.onPlacePortal(portal);
+			case BridgeMessage.TransferPortal ignored -> logger.warn(
+					"OpenDonut: the proxy sent a TRANSFER_PORTAL to a backend; only backends report their "
+							+ "portal blocks. Ignoring it.");
 			case BridgeMessage.TimeReport ignored -> logger.warn(
 					"OpenDonut: the proxy sent a TIME_REPORT to a backend; only backends report their clock. "
 							+ "Ignoring it.");
@@ -296,6 +315,69 @@ final class BackendBridge {
 		return new BridgeMessage.TransferDimension(
 				player.getUUID(),
 				player.level().dimension().identifier().toString());
+	}
+
+	/**
+	 * How far around the arrival point the portal-block box reaches, horizontally. A nether portal frame is at
+	 * most 4 wide, so 3 covers it with margin even if the player drifted a block past the frame before the
+	 * boundary check fired.
+	 */
+	private static final int PORTAL_SCAN_RADIUS = 3;
+
+	/** How far below and above the arrival point the box reaches. */
+	private static final int PORTAL_SCAN_DOWN = 3;
+	private static final int PORTAL_SCAN_UP = 5;
+
+	/** The most blocks a single portal payload may carry; larger boxes are not sent at all. */
+	private static final int PORTAL_MAX_BLOCKS = 256;
+
+	/**
+	 * Captures the blocks around a player who just went through a portal and landed outside this region.
+	 *
+	 * <p>The backends have separate world folders, so the far side of a boundary-straddling portal exists only
+	 * here: this box is what the destination recreates so the portal exists on both sides. Only non-air,
+	 * non-liquid blocks are included — terrain is identical on both servers anyway (same seed), and liquids
+	 * must not be copied because they would start flowing on the destination.
+	 *
+	 * @param player the player, standing at the far side of the portal
+	 * @return the message, or empty when there is nothing worth replicating (a plain walk across the boundary)
+	 */
+	static Optional<BridgeMessage.TransferPortal> capturePortal(ServerPlayer player) {
+		Level level = player.level();
+		BlockPos origin = player.blockPosition();
+		List<BridgeMessage.BlockEntry> blocks = new ArrayList<>();
+		for (int dx = -PORTAL_SCAN_RADIUS; dx <= PORTAL_SCAN_RADIUS; dx++) {
+			for (int dy = -PORTAL_SCAN_DOWN; dy <= PORTAL_SCAN_UP; dy++) {
+				for (int dz = -PORTAL_SCAN_RADIUS; dz <= PORTAL_SCAN_RADIUS; dz++) {
+					BlockPos pos = origin.offset(dx, dy, dz);
+					BlockState state = level.getBlockState(pos);
+					FluidState fluid = state.getFluidState();
+					if (state.isAir() || !fluid.isEmpty()) {
+						continue;
+					}
+					try {
+						blocks.add(new BridgeMessage.BlockEntry(
+								dx, dy, dz, PlayerDataCapture.encodeNbt(NbtUtils.writeBlockState(state))));
+					} catch (IOException e) {
+						// In-memory serialisation cannot fail; if it ever does, skip the block rather than
+						// the whole payload.
+						continue;
+					}
+					if (blocks.size() > PORTAL_MAX_BLOCKS) {
+						return Optional.empty();
+					}
+				}
+			}
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		return Optional.of(new BridgeMessage.TransferPortal(
+				player.getUUID(),
+				new BridgeMessage.PortalBlocks(
+						level.dimension().identifier().toString(),
+						origin.getX(), origin.getY(), origin.getZ(),
+						blocks)));
 	}
 
 	/** @return how many frames this backend has sent */

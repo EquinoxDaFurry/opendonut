@@ -156,6 +156,14 @@ anti-oscillation margin, and the failure policy.
 | 29 | Stand in the **overworld** on `east`, transfer to `west` where your last visit was in the nether | You arrive in the **overworld** at the arrival coordinates — the destination's local player data no longer decides the dimension |
 | 30 | Mixed versions: run an old build on one side | The new side's unknown id is refused cleanly with `UNKNOWN_MESSAGE_TYPE` in the old side's log, and the transfer still completes, just without dimension sync (old behaviour) |
 
+### Checklist: boundary-straddling portals (no config; wire ids 15–16)
+
+| # | Do this | Expect |
+|---|---|---|
+| 31 | Build a nether portal on `west` (overworld, x < 0) whose linked far-side portal lands in `east`'s region (vanilla links within a 128-block radius, and nether coords are x/8, so this happens near `x = 0`), then walk through it | `west` sends `TRANSFER_PORTAL` before the request; after the swap, `east` logs `recreated N portal block(s) at (x, y, z) in '...' for <you> arriving from a portal` — the far-side portal **exists on east**, and you are not immediately teleported back (portal cooldown is set) |
+| 32 | Walk back through the recreated portal on `east` | You arrive on `west` in the original dimension, at the near-side portal — a working round trip, no ping-pong |
+| 33 | Walk across the boundary on foot (no portal near the arrival point) | No `TRANSFER_PORTAL` is sent (nothing to replicate) and no `recreated ... portal block(s)` appears — plain transfers are unchanged |
+
 ### What a boundary crossing should look like
 
 Backend `west`:
@@ -216,6 +224,9 @@ in [`results/`](results).
 | **Dimension sync, unit level** (2026-11-17) | **Pass.** `TRANSFER_DIMENSION` (id 13) and `PLACE_DIMENSION` (id 14) codec round-trips in `BridgeCodecTest`; `ProxyRoutingTableTest` covers note/consume-exactly-once, `clearPending` dropping the note, `placementDimensionFor` emitting the message only when a dimension is present. 343 tests, 0 failures. |
 | **Dimension sync, live startup** (2026-11-17 20:45, logs `results/2026-11-17-dimsync-live-*.log`) | **Pass for startup.** New mod/plugin jars (ids 13–14) installed into `%LOCALAPPDATA%\OpenDonut` and the stack restarted; all three processes up, ports 25565/66/67 answering, `player data sync ready` and `world time sync ready` on all three, fingerprint `6488b4ac` everywhere — no regression. No player connected yet, so no `TRANSFER_DIMENSION`/`PLACE_DIMENSION` frames have flowed. |
 | **Dimension sync, in-game transfer** (checklist 28–30) | **Not yet run.** Needs a client in the nether crossing `x = 0`: expect `placed ... in dimension 'minecraft:the_nether'` on the destination and arrival in the nether at the same coordinates. |
+| **Portal replication, unit level** (2026-11-17) | **Pass.** `TRANSFER_PORTAL` (id 15) / `PLACE_PORTAL` (id 16) codec round-trips in `BridgeCodecTest` (block bytes compared by content, empty block list), and `ProxyRoutingTableTest` covers note/consume-exactly-once, `clearPending` dropping the note, `placementPortalFor` carrying the same blocks, and no message when there is no payload. |
+| **Boundary-straddling portal, live startup** | See the deploy after the in-game run; logs will be `results/2026-11-17-portal-live-*.log`. |
+| **Boundary-straddling portal, in-game** (checklist 31–33) | **Not yet run.** Needs a client building a portal whose far side crosses `x = 0` and walking through it: expect `recreated N portal block(s) ...` on the destination and a working round trip. |
 | **Appending a config section under PowerShell 5.1, first attempt** | **Failed, diagnosed and fixed.** `Get-Content -Raw` decodes with the system ANSI codepage (cp1252 here), so the live configs' UTF-8 em-dash line was re-encoded as mojibake containing C1 control bytes, and SnakeYAML rejected all three configs with `YAML_INVALID: special characters are not allowed` (OpenDonut went inactive on all three processes). Fixed by restoring the backups and re-appending with an explicit `[System.Text.Encoding]::UTF8` read + no-BOM UTF-8 write; all three configs then pass `check` and the em-dash bytes are preserved. Rule for this workspace: **never** read or write the live YAML with implicit encodings — always `[System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)` / `WriteAllText(..., UTF8Encoding($false))`. |
 
 ### Honest summary

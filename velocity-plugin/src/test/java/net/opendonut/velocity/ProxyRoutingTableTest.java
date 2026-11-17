@@ -287,7 +287,14 @@ class ProxyRoutingTableTest {
 
 		private ProxyRoutingTable.PendingTransfer transfer(UUID playerId, long issuedAt, String dimension) {
 			return new ProxyRoutingTable.PendingTransfer(playerId, "west", "east", 0, 64, -1500, 90.0f, 0.0f,
-					"past max-x", issuedAt, dimension);
+					"past max-x", issuedAt, dimension, null);
+		}
+
+		private static BridgeMessage.TransferPortal portalFixture(UUID playerId) {
+			return new BridgeMessage.TransferPortal(playerId, new BridgeMessage.PortalBlocks(
+					"minecraft:overworld", 8, 70, -1500,
+					List.of(new BridgeMessage.BlockEntry(0, 0, 0, new byte[] {1, 2, 3}),
+							new BridgeMessage.BlockEntry(1, 0, 0, new byte[] {4, 5}))));
 		}
 
 		@Test
@@ -375,6 +382,50 @@ class ProxyRoutingTableTest {
 			ProxyRoutingTable.PendingTransfer pending = transfer(UUID.randomUUID(),
 					System.currentTimeMillis(), "");
 			assertTrue(table.placementDimensionFor(pending).isEmpty());
+		}
+
+		@Test
+		@DisplayName("a noted portal payload is consumed exactly once by the next transfer")
+		void portalIsConsumedOnce() {
+			UUID playerId = UUID.randomUUID();
+			assertTrue(table.consumePortal(playerId).isEmpty());
+
+			BridgeMessage.TransferPortal portal = portalFixture(playerId);
+			table.notePortal(playerId, portal);
+			assertEquals(Optional.of(portal), table.consumePortal(playerId));
+			assertTrue(table.consumePortal(playerId).isEmpty());
+		}
+
+		@Test
+		@DisplayName("clearing a pending transfer also drops the noted portal payload")
+		void clearPendingDropsPortal() {
+			UUID playerId = UUID.randomUUID();
+			table.notePortal(playerId, portalFixture(playerId));
+			table.markPending(transfer(playerId, System.currentTimeMillis()));
+			table.clearPending(playerId);
+			assertTrue(table.consumePortal(playerId).isEmpty());
+		}
+
+		@Test
+		@DisplayName("a transfer with a portal payload yields a PLACE_PORTAL carrying the same blocks")
+		void placementPortalBuilt() {
+			UUID playerId = UUID.randomUUID();
+			BridgeMessage.TransferPortal portal = portalFixture(playerId);
+			ProxyRoutingTable.PendingTransfer pending = new ProxyRoutingTable.PendingTransfer(
+					playerId, "west", "east", 0, 64, -1500, 90.0f, 0.0f, "past max-x",
+					System.currentTimeMillis(), "minecraft:overworld", portal);
+			Optional<BridgeMessage.PlacePortal> out = table.placementPortalFor(pending);
+			assertTrue(out.isPresent());
+			assertEquals(playerId, out.get().playerId());
+			assertEquals(portal.portal(), out.get().portal());
+		}
+
+		@Test
+		@DisplayName("a transfer without a portal payload (plain walk across) yields no PLACE_PORTAL")
+		void noPortalNoMessage() {
+			ProxyRoutingTable.PendingTransfer pending = transfer(UUID.randomUUID(),
+					System.currentTimeMillis());
+			assertTrue(table.placementPortalFor(pending).isEmpty());
 		}
 	}
 

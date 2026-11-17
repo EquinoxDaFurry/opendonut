@@ -609,6 +609,10 @@ public final class OpenDonutVelocityPlugin {
 			case BridgeMessage.PlaceDimension dim -> logger.warn(
 					"OpenDonut: backend '{}' sent a PLACE_DIMENSION; only the proxy may place dimensions. "
 							+ "Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.TransferPortal portal -> handleTransferPortal(connection, portal);
+			case BridgeMessage.PlacePortal portal -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLACE_PORTAL; only the proxy may replicate portals. "
+							+ "Ignoring it.", connection.getServerInfo().getName());
 		}
 	}
 
@@ -847,6 +851,34 @@ public final class OpenDonutVelocityPlugin {
 	}
 
 	/**
+	 * Handles a backend's report of the blocks around the far side of a portal a player just used.
+	 *
+	 * <p>Same shape as {@link #handleTransferDimension}: the report arrives immediately before the
+	 * {@code TRANSFER_REQUEST} for the same move, on the same connection, and is consumed when that request is
+	 * accepted, with the same "the player must actually be on the reporting server" check.
+	 *
+	 * @param connection the reporting backend's connection
+	 * @param portal the report
+	 */
+	private void handleTransferPortal(ServerConnection connection, BridgeMessage.TransferPortal portal) {
+		String sourceServerName = connection.getServerInfo().getName();
+		Optional<Player> maybePlayer = server.getPlayer(portal.playerId());
+		if (maybePlayer.isEmpty()) {
+			return;
+		}
+		Optional<ServerConnection> currentServer = maybePlayer.get().getCurrentServer();
+		if (currentServer.isEmpty() || !currentServer.get().getServerInfo().getName().equals(sourceServerName)) {
+			logger.warn("OpenDonut: backend '{}' reported a portal for {} but that player is on '{}'; "
+					+ "ignoring the report", sourceServerName, maybePlayer.get().getUsername(),
+					currentServer.map(server -> server.getServerInfo().getName()).orElse("no server"));
+			return;
+		}
+		routing.notePortal(portal.playerId(), portal);
+		logger.debug("OpenDonut: backend '{}' reports {} portal block(s) around the far side for {}",
+				sourceServerName, portal.portal().blocks().size(), maybePlayer.get().getUsername());
+	}
+
+	/**
 	 * Handles a request to move a player.
 	 *
 	 * @param connection the requesting backend's connection
@@ -926,9 +958,11 @@ public final class OpenDonutVelocityPlugin {
 
 		routing.pruneStale(TRANSFER_MAX_AGE_MILLIS);
 
-		// The dimension the source reported just before this request, if any: an older backend does not send
-		// one, and then the transfer carries an empty dimension and the destination keeps its own idea of it.
+		// The dimension and portal blocks the source reported just before this request, if any: an older
+		// backend does not send them, and then the transfer carries neither and the destination keeps its own
+		// idea of both.
 		String dimension = routing.consumeDimension(request.playerId()).orElse("");
+		BridgeMessage.TransferPortal portal = routing.consumePortal(request.playerId()).orElse(null);
 		ProxyRoutingTable.PendingTransfer transfer = new ProxyRoutingTable.PendingTransfer(
 				request.playerId(),
 				sourceServerName,
@@ -940,7 +974,8 @@ public final class OpenDonutVelocityPlugin {
 				request.pitch(),
 				request.reason(),
 				System.currentTimeMillis(),
-				dimension);
+				dimension,
+				portal);
 		routing.markPending(transfer);
 
 		// With player-data sync on, the source must commit the player's snapshot before the connection
@@ -1233,6 +1268,15 @@ public final class OpenDonutVelocityPlugin {
 			sendTo(connection.get(), dimension);
 			logger.debug("OpenDonut: told '{}' to place {} in dimension {}",
 					connection.get().getServerInfo().getName(), transfer.playerId(), dimension.dimension());
+		});
+		// The far-side portal blocks ride right behind the dimension: the destination recreates them in the
+		// arrival level, so a portal whose link crossed the boundary exists on both sides.
+		routing.placementPortalFor(transfer).ifPresent(portal -> {
+			sendTo(connection.get(), portal);
+			logger.debug("OpenDonut: told '{}' to recreate {} portal block(s) at ({}, {}, {}) for {}",
+					connection.get().getServerInfo().getName(), portal.portal().blocks().size(),
+					portal.portal().originX(), portal.portal().originY(), portal.portal().originZ(),
+					transfer.playerId());
 		});
 		logger.debug("OpenDonut: told '{}' to place {} at global ({}, {}, {})",
 				connection.get().getServerInfo().getName(), transfer.playerId(), transfer.globalX(),

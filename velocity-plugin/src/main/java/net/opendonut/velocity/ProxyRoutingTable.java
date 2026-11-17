@@ -98,6 +98,9 @@ final class ProxyRoutingTable {
 	 * @param dimension the dimension the player was in when they left, reported by the source in a
 	 *                  {@code TRANSFER_DIMENSION}; empty when the source did not say (an older build), in
 	 *                  which case the destination keeps its own idea of the dimension
+	 * @param portal the blocks around the far side of a portal the player used to leave, reported by the
+	 *               source in a {@code TRANSFER_PORTAL}; {@code null} when there was none (a plain walk across
+	 *               the boundary, or an older build), in which case nothing is recreated on the destination
 	 */
 	record PendingTransfer(
 			UUID playerId,
@@ -110,7 +113,8 @@ final class ProxyRoutingTable {
 			float pitch,
 			String reason,
 			long issuedAtMillis,
-			String dimension) {
+			String dimension,
+			BridgeMessage.TransferPortal portal) {
 	}
 
 	/**
@@ -136,6 +140,14 @@ final class ProxyRoutingTable {
 	 * the two messages cannot race each other.
 	 */
 	private final Map<UUID, String> notedDimensions = new ConcurrentHashMap<>();
+
+	/**
+	 * The last portal block payload each backend reported for a player, via {@code TRANSFER_PORTAL}.
+	 *
+	 * <p>Same lifecycle as {@link #notedDimensions}: reported on the same connection immediately before the
+	 * {@code TRANSFER_REQUEST}, consumed into the transfer when that request is accepted.
+	 */
+	private final Map<UUID, BridgeMessage.TransferPortal> notedPortals = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates the table.
@@ -358,6 +370,7 @@ final class ProxyRoutingTable {
 	 */
 	Optional<PendingTransfer> clearPending(UUID playerId) {
 		notedDimensions.remove(playerId);
+		notedPortals.remove(playerId);
 		return Optional.ofNullable(pending.remove(playerId));
 	}
 
@@ -409,6 +422,26 @@ final class ProxyRoutingTable {
 	}
 
 	/**
+	 * Records the portal blocks a backend just reported for a player.
+	 *
+	 * @param playerId the player
+	 * @param portal the report
+	 */
+	void notePortal(UUID playerId, BridgeMessage.TransferPortal portal) {
+		notedPortals.put(playerId, portal);
+	}
+
+	/**
+	 * Takes the last reported portal payload for a player, removing it.
+	 *
+	 * @param playerId the player
+	 * @return the payload, or empty when the source sent none (a plain boundary walk, or an older build)
+	 */
+	Optional<BridgeMessage.TransferPortal> consumePortal(UUID playerId) {
+		return Optional.ofNullable(notedPortals.remove(playerId));
+	}
+
+	/**
 	 * Builds the placement message for a transfer.
 	 *
 	 * @param transfer the transfer
@@ -439,6 +472,18 @@ final class ProxyRoutingTable {
 			return Optional.empty();
 		}
 		return Optional.of(new BridgeMessage.PlaceDimension(transfer.playerId(), transfer.dimension()));
+	}
+
+	/**
+	 * Builds the portal-replication message for a transfer, to be sent right after the {@code PLACE_DIMENSION}.
+	 *
+	 * @param transfer the transfer
+	 * @return the message, or empty when the transfer carries no portal payload, in which case the destination
+	 *         recreates nothing (the player walked across, or the source was an older build)
+	 */
+	Optional<BridgeMessage.PlacePortal> placementPortalFor(PendingTransfer transfer) {
+		return Optional.ofNullable(transfer.portal())
+				.map(portal -> new BridgeMessage.PlacePortal(transfer.playerId(), portal.portal()));
 	}
 
 	/**

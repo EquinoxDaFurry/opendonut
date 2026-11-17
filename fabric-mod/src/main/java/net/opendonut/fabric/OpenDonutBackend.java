@@ -9,7 +9,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -17,6 +20,8 @@ import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.dedicated.DedicatedServerProperties;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 
 import org.slf4j.Logger;
 
@@ -697,6 +702,10 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		// dimension — the destination then keeps its own idea of it, exactly as before dimensions were synced.
 		bridge.send(player, BackendBridge.transferDimension(player));
 
+		// Same for the portal blocks, when the departure was a portal whose far side is outside this region:
+		// the destination has its own world folder and would otherwise arrive with no portal there.
+		BackendBridge.capturePortal(player).ifPresent(portal -> bridge.send(player, portal));
+
 		BridgeMessage.TransferRequest request = BackendBridge.transferRequest(
 				player, self.id(), destination.id(), reason);
 
@@ -745,6 +754,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	private void applyPlacement(ServerPlayer player, PlayerTransferTracker.Placement placement) {
 		tracker.takePlacement(player.getUUID());
 		String dimension = tracker.takeArrivalDimension(player.getUUID()).orElse("");
+		BridgeMessage.PlacePortal portal = tracker.takeArrivalPortal(player.getUUID()).orElse(null);
 
 		if (!placement.playerId().equals(player.getUUID())) {
 			logger.warn("OpenDonut: ignoring an arrival instruction addressed to {} but delivered to {}",
@@ -787,6 +797,15 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		if (!placedInOtherDimension) {
 			player.connection.teleport(targetX, targetY, targetZ, placement.yaw(), placement.pitch());
 		}
+		// Recreate the far side of a boundary-straddling portal in the level the player now stands in, so the
+		// portal exists on this server too. A fresh login has no portal cooldown, so without this the player
+		// standing in the recreated portal would be teleported straight back — set the vanilla travel cooldown.
+		if (portal != null) {
+			applyPortalBlocks(player, portal);
+		}
+		if (placedInOtherDimension || portal != null) {
+			player.setPortalCooldown(300);
+		}
 		// The player is now legitimately here: restart the grace period and drop any stale request.
 		tracker.clearPending(player.getUUID(), System.currentTimeMillis(), config.transfer().cooldownSeconds());
 		tracker.markJoined(player.getUUID(), server.getTickCount());
@@ -816,6 +835,42 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 			return null;
 		}
 		return server.getLevel(ResourceKey.create(Registries.DIMENSION, id));
+	}
+
+	/**
+	 * Recreates the portal blocks the proxy sent for an arriving player, in the level they were placed in.
+	 *
+	 * <p>Each entry is an offset from the origin plus a serialised block state, decoded through the same
+	 * {@code NbtUtils} reader the backend used to write it. Malformed entries are skipped, never fatal: a broken
+	 * portal payload must not stop the placement.
+	 *
+	 * @param player the arriving player, already placed
+	 * @param portal the payload
+	 */
+	private void applyPortalBlocks(ServerPlayer player, BridgeMessage.PlacePortal portal) {
+		if (!(player.level() instanceof ServerLevel level)) {
+			return;
+		}
+		// The payload names the dimension it was captured in; trust the level the player actually arrived in,
+		// which is the same one when the transfer carried a PLACE_DIMENSION.
+		BridgeMessage.PortalBlocks blocks = portal.portal();
+		BlockPos origin = new BlockPos(blocks.originX(), blocks.originY(), blocks.originZ());
+		HolderGetter<Block> blockGetter = server.registryAccess().lookupOrThrow(Registries.BLOCK);
+		int applied = 0;
+		for (BridgeMessage.BlockEntry entry : blocks.blocks()) {
+			try {
+				BlockState state = NbtUtils.readBlockState(
+						blockGetter, PlayerDataCapture.decodeNbt(entry.nbt()));
+				level.setBlock(origin.offset(entry.dx(), entry.dy(), entry.dz()), state, 3, 512);
+				applied++;
+			} catch (RuntimeException | IOException e) {
+				logger.warn("OpenDonut: skipping one unreadable portal block for {}: {}",
+						player.getName().getString(), e.toString());
+			}
+		}
+		logger.info("OpenDonut: recreated {} portal block(s) at ({}, {}, {}) in '{}' for {} arriving from a "
+				+ "portal", applied, blocks.originX(), blocks.originY(), blocks.originZ(),
+				level.dimension().identifier(), player.getName().getString());
 	}
 
 	/**
@@ -963,6 +1018,14 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		// consumed together when the placement is applied.
 		tracker.storeArrivalDimension(dim.playerId(), dim.dimension());
 		logger.debug("OpenDonut: queued dimension {} for arriving player {}", dim.dimension(), dim.playerId());
+	}
+
+	@Override
+	public void onPlacePortal(BridgeMessage.PlacePortal portal) {
+		tracker.storeArrivalPortal(portal.playerId(), portal);
+		logger.debug("OpenDonut: queued {} portal block(s) at ({}, {}, {}) in {} for arriving player {}",
+				portal.portal().blocks().size(), portal.portal().originX(), portal.portal().originY(),
+				portal.portal().originZ(), portal.portal().dimension(), portal.playerId());
 	}
 
 	@Override

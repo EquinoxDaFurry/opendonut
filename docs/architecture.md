@@ -286,6 +286,17 @@ Design notes:
 | `TIME_SET` | proxy → backend | "Set world clock C to this reading" — sent on hello, on arrival, and periodically |
 | `TRANSFER_DIMENSION` | backend → proxy | "Player X is currently in dimension D" — sent right before the `TRANSFER_REQUEST` for the same move |
 | `PLACE_DIMENSION` | proxy → backend | "Place arriving player X in dimension D" — sent right after the `PLACE_PLAYER` for the same transfer |
+| `TRANSFER_PORTAL` | backend → proxy | "Player X went through a portal; here are the blocks around the far side" — sent right before the `TRANSFER_REQUEST` for the same move |
+| `PLACE_PORTAL` | proxy → backend | "Recreate these blocks at this origin in this level" — sent right after the `PLACE_DIMENSION` for the same transfer |
+
+The two worlds are separate folders with the same seed, so terrain matches across a boundary but player-built
+blocks do not. A nether portal whose linked far side falls in another region (possible because vanilla searches
+a 128-block radius when linking portals, and nether coordinates are x/8) would therefore strand the player on
+the destination with no portal there. `TRANSFER_PORTAL`/`PLACE_PORTAL` (ids 15–16) fix that: the source sends a
+small box of non-air, non-liquid blocks around the arrival point, the destination recreates them in the arrival
+level, and the arriving player gets the vanilla portal-travel cooldown so they are not immediately teleported
+back through the recreated portal. Old builds refuse the unknown ids cleanly and the arrival is portal-less, as
+before.
 
 `TRANSFER_REQUEST`/`PLACE_PLAYER` cannot carry a dimension field — their fields are frozen — so the dimension
 travels in its own pair of messages (ids 13–14). The pair is sent on the same connection, in order, which is

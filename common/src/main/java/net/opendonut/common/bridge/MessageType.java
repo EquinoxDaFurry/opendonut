@@ -133,7 +133,30 @@ public enum MessageType {
 	 * coordinate space, so no nether/overworld scaling is applied). An old backend refuses this id cleanly
 	 * and simply places the player in whatever dimension its local player data says, as before.
 	 */
-	PLACE_DIMENSION(14);
+	PLACE_DIMENSION(14),
+
+	/**
+	 * Backend to proxy. "Player X just went through a portal and landed outside my region; here are the blocks
+	 * around the far side."
+	 *
+	 * <p>Sent on the same player connection immediately before the {@code TRANSFER_REQUEST} for the same move,
+	 * like {@link #TRANSFER_DIMENSION}. The backends have separate world folders, so a player-built portal exists
+	 * only where it was built: without this message the player arrives on the destination at the far-side
+	 * coordinates with no portal there. The payload is a small box of non-air blocks around the arrival point,
+	 * each as an offset plus an opaque NBT block state (the common module has no Minecraft dependency, so the
+	 * block state travels as bytes). An old build refuses this id cleanly and the arrival is portal-less, as
+	 * before.
+	 */
+	TRANSFER_PORTAL(15),
+
+	/**
+	 * Proxy to backend. "Recreate these blocks at this origin in this dimension before placing the player."
+	 *
+	 * <p>Sent right after the {@code PLACE_DIMENSION} for the same transfer. The destination sets the blocks in
+	 * the arrival level, so the far side of a boundary-straddling portal exists there, and sets the arriving
+	 * player's portal cooldown so they are not immediately teleported back through it.
+	 */
+	PLACE_PORTAL(16);
 
 	private final int wireId;
 

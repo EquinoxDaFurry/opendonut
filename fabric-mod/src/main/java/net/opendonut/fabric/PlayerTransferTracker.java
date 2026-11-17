@@ -87,6 +87,14 @@ final class PlayerTransferTracker {
 	 */
 	private final Map<UUID, String> arrivalDimensions = new HashMap<>();
 
+	/**
+	 * The portal block payload the proxy sent for an arriving player, via {@code PLACE_PORTAL}.
+	 *
+	 * <p>Same lifecycle as the arrival dimension: stored separately so the messages can arrive in any order,
+	 * consumed together with the placement.
+	 */
+	private final Map<UUID, net.opendonut.common.bridge.BridgeMessage.PlacePortal> arrivalPortals = new HashMap<>();
+
 	private final Map<UUID, Long> cooldownUntil = new HashMap<>();
 	private final Map<UUID, Long> joinTick = new HashMap<>();
 
@@ -221,6 +229,26 @@ final class PlayerTransferTracker {
 	}
 
 	/**
+	 * Stores the portal block payload the proxy wants recreated for an arriving player.
+	 *
+	 * @param playerId the arriving player
+	 * @param portal the payload
+	 */
+	void storeArrivalPortal(UUID playerId, net.opendonut.common.bridge.BridgeMessage.PlacePortal portal) {
+		arrivalPortals.put(playerId, portal);
+	}
+
+	/**
+	 * Takes the stored arrival portal payload for a player, removing it.
+	 *
+	 * @param playerId the player
+	 * @return the payload, or empty when the proxy sent none
+	 */
+	Optional<net.opendonut.common.bridge.BridgeMessage.PlacePortal> takeArrivalPortal(UUID playerId) {
+		return Optional.ofNullable(arrivalPortals.remove(playerId));
+	}
+
+	/**
 	 * Records whether a player is currently standing in an unassigned coordinate.
 	 *
 	 * @param playerId the player
@@ -243,6 +271,7 @@ final class PlayerTransferTracker {
 		pending.remove(playerId);
 		placements.remove(playerId);
 		arrivalDimensions.remove(playerId);
+		arrivalPortals.remove(playerId);
 		cooldownUntil.remove(playerId);
 		joinTick.remove(playerId);
 		inUnassignedArea.remove(playerId);
@@ -259,10 +288,11 @@ final class PlayerTransferTracker {
 	 */
 	int retainOnly(Collection<UUID> online) {
 		List<UUID> known = new ArrayList<>(pending.size() + placements.size() + joinTick.size()
-				+ arrivalDimensions.size());
+				+ arrivalDimensions.size() + arrivalPortals.size());
 		known.addAll(pending.keySet());
 		known.addAll(placements.keySet());
 		known.addAll(arrivalDimensions.keySet());
+		known.addAll(arrivalPortals.keySet());
 		known.addAll(joinTick.keySet());
 
 		int forgotten = 0;
