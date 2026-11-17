@@ -37,6 +37,7 @@ public final class OpenDonutConfig {
 	private final TransferSettings transfer;
 	private final BackendSettings backend;
 	private final BorderParticleSettings borderParticles;
+	private final PlayerDataSettings playerData;
 
 	/**
 	 * The lazily built region index. {@code volatile} so that publishing it from whichever thread
@@ -61,6 +62,7 @@ public final class OpenDonutConfig {
 	 * @param transfer backend transfer behaviour
 	 * @param backend identity of the instance reading this file
 	 * @param borderParticles the cosmetic boundary wall
+	 * @param playerData cross-server player data synchronisation
 	 */
 	public OpenDonutConfig(
 			String sourceName,
@@ -71,7 +73,8 @@ public final class OpenDonutConfig {
 			ProxySettings proxy,
 			TransferSettings transfer,
 			BackendSettings backend,
-			BorderParticleSettings borderParticles) {
+			BorderParticleSettings borderParticles,
+			PlayerDataSettings playerData) {
 		this.sourceName = Objects.requireNonNull(sourceName, "sourceName");
 		this.world = Objects.requireNonNull(world, "world");
 		this.servers = List.copyOf(Objects.requireNonNull(servers, "servers"));
@@ -81,6 +84,7 @@ public final class OpenDonutConfig {
 		this.transfer = Objects.requireNonNull(transfer, "transfer");
 		this.backend = Objects.requireNonNull(backend, "backend");
 		this.borderParticles = Objects.requireNonNull(borderParticles, "borderParticles");
+		this.playerData = Objects.requireNonNull(playerData, "playerData");
 	}
 
 	/** @return the origin of this configuration, usually a file name */
@@ -126,6 +130,11 @@ public final class OpenDonutConfig {
 	/** @return the cosmetic boundary wall a player sees when approaching their region's edge */
 	public BorderParticleSettings borderParticles() {
 		return borderParticles;
+	}
+
+	/** @return the cross-server player data synchronisation settings */
+	public PlayerDataSettings playerData() {
+		return playerData;
 	}
 
 	/** @return the world border */

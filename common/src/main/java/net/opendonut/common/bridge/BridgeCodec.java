@@ -400,6 +400,34 @@ public final class BridgeCodec {
 					out.writeFloat(place.pitch());
 					out.writeLong(place.issuedAtMillis());
 				}
+				case BridgeMessage.PlayerDataLoadRequest request -> {
+					writeUuid(out, request.playerId());
+					out.writeUTF(request.serverId());
+				}
+				case BridgeMessage.PlayerDataLoadResponse response -> {
+					writeUuid(out, response.playerId());
+					out.writeBoolean(response.present());
+					out.writeLong(response.revision());
+					writeByteArray(out, response.envelope());
+					out.writeUTF(response.detail());
+				}
+				case BridgeMessage.PlayerDataSaveRequest request -> {
+					writeUuid(out, request.playerId());
+					out.writeUTF(request.serverId());
+					out.writeLong(request.baseRevision());
+					writeByteArray(out, request.envelope());
+				}
+				case BridgeMessage.PlayerDataSaveResult result -> {
+					writeUuid(out, result.playerId());
+					out.writeBoolean(result.accepted());
+					out.writeLong(result.revision());
+					out.writeUTF(result.detail());
+				}
+				case BridgeMessage.PlayerDataFlushRequest request -> {
+					writeUuid(out, request.playerId());
+					out.writeUTF(request.fromServerId());
+					out.writeUTF(request.toServerId());
+				}
 			}
 			out.flush();
 			return buffer.toByteArray();
@@ -432,6 +460,16 @@ public final class BridgeCodec {
 			case PLACE_PLAYER -> new BridgeMessage.PlacePlayer(
 					readUuid(in), in.readUTF(), in.readUTF(), in.readInt(), in.readInt(), in.readInt(),
 					in.readFloat(), in.readFloat(), in.readLong());
+			case PLAYER_DATA_LOAD_REQUEST -> new BridgeMessage.PlayerDataLoadRequest(
+					readUuid(in), in.readUTF());
+			case PLAYER_DATA_LOAD_RESPONSE -> new BridgeMessage.PlayerDataLoadResponse(
+					readUuid(in), in.readBoolean(), in.readLong(), readByteArray(in), in.readUTF());
+			case PLAYER_DATA_SAVE_REQUEST -> new BridgeMessage.PlayerDataSaveRequest(
+					readUuid(in), in.readUTF(), in.readLong(), readByteArray(in));
+			case PLAYER_DATA_SAVE_RESULT -> new BridgeMessage.PlayerDataSaveResult(
+					readUuid(in), in.readBoolean(), in.readLong(), in.readUTF());
+			case PLAYER_DATA_FLUSH_REQUEST -> new BridgeMessage.PlayerDataFlushRequest(
+					readUuid(in), in.readUTF(), in.readUTF());
 		};
 	}
 
@@ -489,6 +527,42 @@ public final class BridgeCodec {
 	 */
 	private static UUID readUuid(DataInputStream in) throws IOException {
 		return new UUID(in.readLong(), in.readLong());
+	}
+
+	/**
+	 * Writes a length-prefixed byte array <em>inside</em> an authenticated frame payload.
+	 *
+	 * <p>This is not the framing mistake the {@code BridgePayload} documentation warns about: that contract
+	 * is about the outermost Minecraft payload field, which carries the frame verbatim. Inside the frame,
+	 * every field is delimited by the frame's own payload length, and a length prefix here is what lets the
+	 * reader refuse an oversized array before allocating it.
+	 *
+	 * @param out the stream
+	 * @param bytes the bytes
+	 * @throws IOException if the stream fails
+	 */
+	private static void writeByteArray(DataOutputStream out, byte[] bytes) throws IOException {
+		out.writeInt(bytes.length);
+		out.write(bytes);
+	}
+
+	/**
+	 * Reads a byte array written by {@link #writeByteArray}, refusing to allocate more than the payload
+	 * actually holds.
+	 *
+	 * @param in the stream positioned at the length
+	 * @return the bytes
+	 * @throws IOException if the declared length is negative or larger than the remaining payload
+	 */
+	private static byte[] readByteArray(DataInputStream in) throws IOException {
+		int length = in.readInt();
+		if (length < 0 || length > in.available()) {
+			throw new IOException("frame declares a byte array of " + length + " bytes but only "
+					+ in.available() + " payload bytes remain");
+		}
+		byte[] bytes = new byte[length];
+		in.readFully(bytes);
+		return bytes;
 	}
 
 	/**

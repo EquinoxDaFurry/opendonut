@@ -410,6 +410,58 @@ count and the distance to each side — which is the quickest way to confirm it 
 
 ---
 
+## `player-data`
+
+Off by default. When enabled, a player's inventory, armour, off-hand, ender chest, health, hunger, experience,
+selected hotbar slot, active effects, fire and air follow them across a boundary, in both directions. The
+**proxy** owns one versioned snapshot per player in a small SQLite database and relays saves and loads over the
+bridge, so the backends need nothing extra installed. The server a player is currently on is the only one allowed
+to write their data (a lease in the database), and a save only applies if it was based on the current revision
+(compare-and-set), which is what prevents duplication and stale overwrites. Before a transfer is issued, the proxy
+asks the source server to save the player's data and waits for the committed answer; if that does not arrive in
+time, the transfer is refused unless `on-flush-failure` says otherwise.
+
+The same section must be present (with the same values) on the proxy and on every backend, and the
+[`bridge`](#bridge) must be enabled.
+
+```yaml
+player-data:
+  enabled: false
+  storage: sqlite
+  file: playerdata.db
+  sync-interval-seconds: 60
+  lease-seconds: 60
+  on-flush-failure: refuse-transfer
+  scope: session
+  keep-history: 20
+  max-payload-bytes: 49152
+  flush-timeout-seconds: 10
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Master switch. `false` keeps the pre-sync behaviour: a transfer gives the player the destination's own copy of their data |
+| `storage` | string | `sqlite` | Where the proxy stores snapshots. Only `sqlite` is implemented; any other value is an error at load time |
+| `file` | file name | `playerdata.db` | The database file, resolved against the proxy's plugin data directory when not absolute. Must be a plain file name, not a path |
+| `sync-interval-seconds` | 0–3600 | `60` | Periodic save of every online player. `0` saves only on transfer and disconnect. Bounds what a crash can lose |
+| `lease-seconds` | 10–3600 | `60` | How long the current server's right to write a player's data lasts. After expiry another backend may take over — the recovery path when a backend crashes |
+| `on-flush-failure` | enum | `refuse-transfer` | `refuse-transfer` cancels the move and leaves the player where they are (nothing can be lost); `proceed-with-last-known` moves them using the last stored snapshot (up to one sync interval of play can be lost) |
+| `scope` | enum | `session` | How much of the player travels. Only `session` is implemented; `progress` and `everything` are rejected with an error naming the plan |
+| `keep-history` | 0–1000 | `20` | Previous snapshots kept per player in the database, for recovery after a bad transfer |
+| `max-payload-bytes` | 1024–61440 | `49152` | Largest snapshot, after compression, that fits one bridge frame. A larger snapshot refuses the transfer with an explanation rather than being truncated |
+| `flush-timeout-seconds` | 1–60 | `10` | How long the proxy waits for the source server to commit the player's data before refusing the transfer. Must stay below `transfer.max-pending-seconds` |
+
+What is deliberately **not** synchronised: position, rotation, dimension and portal cooldown (the proxy places
+the player), game mode (the destination's own mode wins), vehicles and passengers (entity transport is a separate
+feature), and the player's UUID. The blacklist is applied both when the snapshot is captured and again when it is
+applied, so the store never holds where players were and a crafted snapshot cannot smuggle a position in.
+
+In game, `/opendonut playerdata` on a backend or on the proxy prints the live state: settings, saves sent and
+refused, loads applied, and the store's contents. See [plan-player-data-sync.md](plan-player-data-sync.md) for the
+design and the failure analysis.
+
+---
+
 ## Seeds
 
 ```yaml

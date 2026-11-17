@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import com.google.inject.Inject;
@@ -16,6 +18,7 @@ import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ConnectionRequestBuilder;
@@ -42,7 +45,11 @@ import net.opendonut.common.config.SeedResolution;
 import net.opendonut.common.config.SeedStore;
 import net.opendonut.common.config.ValidationIssue;
 import net.opendonut.common.model.OpenDonutConfig;
+import net.opendonut.common.model.PlayerDataSettings;
 import net.opendonut.common.model.ServerDefinition;
+import net.opendonut.common.playerdata.PlayerDataCoordinator;
+import net.opendonut.common.playerdata.PlayerDataStore;
+import net.opendonut.common.playerdata.SqlitePlayerDataStore;
 
 /**
  * The OpenDonut Velocity plugin: the authority on where a player is allowed to be.
@@ -77,10 +84,12 @@ import net.opendonut.common.model.ServerDefinition;
  *   <li>The requesting backend is told the outcome, so it can clear its state or apply its failure policy.</li>
  * </ol>
  *
- * <h2>What this plugin does not do</h2>
- * It does not move inventories, health, experience or player data between servers. Those live in each
- * backend's own player data files, and Velocity has no concept of them. That is a documented limitation of
- * 0.1.0-dev, not something this plugin pretends to solve.
+ * <h2>Player data</h2>
+ * When {@code player-data.enabled} is true, this plugin also owns the players' synchronised state: a store
+ * (SQLite by default) holding one versioned snapshot per player, a lease saying which backend may write it,
+ * and the flush-before-move sequence that hands authority over without ever having two owners. The whole
+ * decision logic lives in {@link PlayerDataCoordinator}, which is plain Java and unit tested without a proxy;
+ * this class only wires events to it. See {@code docs/plan-player-data-sync.md}.
  */
 @Plugin(
 		id = "opendonut",
@@ -110,6 +119,39 @@ public final class OpenDonutVelocityPlugin {
 	private ChannelIdentifier channel;
 	private long resolvedSeed;
 	private boolean active;
+
+	/**
+	 * The player-data store, or {@code null} when {@code player-data.enabled} is false or the store could not
+	 * be opened. Null means "no synchronisation", never "synchronise unsafely".
+	 */
+	private PlayerDataStore playerDataStore;
+
+	/** The lease/compare-and-set authority over {@link #playerDataStore}, or {@code null} as above. */
+	private PlayerDataCoordinator playerData;
+
+	/**
+	 * Transfers waiting for the source backend to flush the player's data, keyed by player.
+	 *
+	 * @param transfer the transfer being held
+	 * @param sourceConnection the source backend's connection, for the timeout abort and the result
+	 * @param deadlineMillis when the wait gives up
+	 * @param leaseMoved whether the lease was already moved to the destination
+	 */
+	private record FlushWait(
+			ProxyRoutingTable.PendingTransfer transfer,
+			ServerConnection sourceConnection,
+			long deadlineMillis,
+			boolean leaseMoved) {
+	}
+
+	private final Map<UUID, FlushWait> flushes = new ConcurrentHashMap<>();
+
+	/**
+	 * Players whose lease this proxy has moved to a destination as part of a transfer, and to which server.
+	 * Tracked so that an abandoned transfer hands the lease back to the source instead of locking the
+	 * player out for a whole lease period.
+	 */
+	private final Map<UUID, String> leaseHolders = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates the plugin. Velocity injects everything the plugin needs.
@@ -166,6 +208,8 @@ public final class OpenDonutVelocityPlugin {
 	 */
 	synchronized boolean reload() {
 		active = false;
+		flushes.clear();
+		closePlayerDataStore();
 		Path configPath = dataDirectory.resolve("opendonut.yml");
 		ConfigLoadResult loaded = ConfigLoader.load(configPath);
 
@@ -234,9 +278,62 @@ public final class OpenDonutVelocityPlugin {
 			registerBackends(candidate);
 		}
 		verifyBackendsAreRegistered(candidate);
+		setUpPlayerData(candidate);
 
 		active = true;
 		return true;
+	}
+
+	/**
+	 * Opens the player-data store when the configuration asks for it.
+	 *
+	 * <p>Player data travels over the bridge, so it needs the bridge; without one there is nothing to do and
+	 * synchronisation stays off. If the store cannot be opened the plugin says so loudly and keeps routing
+	 * exactly as before: a proxy that cannot store snapshots must not pretend to synchronise.
+	 *
+	 * @param candidate the validated configuration
+	 */
+	private void setUpPlayerData(OpenDonutConfig candidate) {
+		PlayerDataSettings settings = candidate.playerData();
+		if (!settings.enabled()) {
+			return;
+		}
+		if (!candidate.bridge().enabled()) {
+			logger.error("OpenDonut: player-data.enabled is true but bridge.enabled is false. Player data "
+					+ "travels over the bridge, so synchronisation is OFF. Set bridge.enabled: true or "
+					+ "player-data.enabled: false.");
+			return;
+		}
+		Path file = Path.of(settings.file());
+		if (!file.isAbsolute()) {
+			file = dataDirectory.resolve(file);
+		}
+		try {
+			playerDataStore = SqlitePlayerDataStore.open(file);
+			playerData = new PlayerDataCoordinator(playerDataStore, settings);
+			logger.info("OpenDonut: player data sync ready — {}", playerData.describe());
+		} catch (IOException | java.sql.SQLException | RuntimeException e) {
+			playerDataStore = null;
+			playerData = null;
+			logger.error("OpenDonut: the player-data store at {} could not be opened ({}). Player data will NOT "
+							+ "be synchronised, but routing keeps working. Fix the path or the permissions and "
+							+ "run /opendonut reload.", file, e.getMessage());
+		}
+	}
+
+	/**
+	 * Closes the player-data store, if one is open.
+	 */
+	private void closePlayerDataStore() {
+		if (playerDataStore != null) {
+			try {
+				playerDataStore.close();
+			} catch (RuntimeException e) {
+				logger.warn("OpenDonut: closing the player-data store failed: {}", e.toString());
+			}
+			playerDataStore = null;
+			playerData = null;
+		}
 	}
 
 	/**
@@ -349,6 +446,8 @@ public final class OpenDonutVelocityPlugin {
 		switch (message) {
 			case BridgeMessage.Hello hello -> handleHello(connection, hello);
 			case BridgeMessage.TransferRequest request -> handleTransferRequest(connection, request);
+			case BridgeMessage.PlayerDataLoadRequest request -> handlePlayerDataLoadRequest(connection, request);
+			case BridgeMessage.PlayerDataSaveRequest request -> handlePlayerDataSaveRequest(connection, request);
 			case BridgeMessage.HelloAck ack -> logger.warn(
 					"OpenDonut: backend '{}' sent a HELLO_ACK; that message only travels from the proxy to a "
 							+ "backend. Ignoring it.", connection.getServerInfo().getName());
@@ -358,7 +457,180 @@ public final class OpenDonutVelocityPlugin {
 			case BridgeMessage.TransferResult result -> logger.warn(
 					"OpenDonut: backend '{}' sent a TRANSFER_RESULT; only the proxy reports outcomes. "
 							+ "Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.PlayerDataLoadResponse response -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLAYER_DATA_LOAD_RESPONSE; only the proxy answers load "
+							+ "requests. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.PlayerDataSaveResult result -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLAYER_DATA_SAVE_RESULT; only the proxy reports save "
+							+ "outcomes. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.PlayerDataFlushRequest request -> logger.warn(
+					"OpenDonut: backend '{}' sent a PLAYER_DATA_FLUSH_REQUEST; only the proxy may demand a "
+							+ "flush. Ignoring it.", connection.getServerInfo().getName());
 		}
+	}
+
+	/**
+	 * Handles a backend asking for a player's stored data, which is how the lease moves to a destination
+	 * after a transfer.
+	 *
+	 * @param connection the backend connection the request arrived through
+	 * @param request the request
+	 */
+	private void handlePlayerDataLoadRequest(ServerConnection connection, BridgeMessage.PlayerDataLoadRequest request) {
+		if (playerData == null) {
+			return;
+		}
+		String serverName = connection.getServerInfo().getName();
+		if (!request.serverId().equals(serverName)) {
+			logger.warn("OpenDonut: backend '{}' asked for player data as '{}'; the proxy's name for that "
+					+ "connection wins", serverName, request.serverId());
+		}
+		PlayerDataCoordinator.LoadOutcome outcome =
+				playerData.handleLoadRequest(request.playerId(), serverName, System.currentTimeMillis());
+		if (outcome.leaseAcquired() && outcome.leaseStolen()) {
+			logger.warn("OpenDonut: the lease for {} was taken over by '{}' from an expired holder",
+					request.playerId(), serverName);
+		}
+		if (outcome.leaseAcquired() && outcome.present()) {
+			logger.info("OpenDonut: sent the stored data of {} to '{}' ({})", request.playerId(), serverName,
+					outcome.detail());
+		} else if (!outcome.leaseAcquired()) {
+			logger.warn("OpenDonut: refused to serve player data for {} to '{}': {}", request.playerId(), serverName,
+					outcome.detail());
+		}
+		sendTo(connection, new BridgeMessage.PlayerDataLoadResponse(
+				request.playerId(), outcome.present(), outcome.revision(), outcome.envelope(), outcome.detail()));
+	}
+
+	/**
+	 * Handles a backend saving a player's data.
+	 *
+	 * <p>When the save answers a flush the proxy demanded for a pending transfer, the transfer continues if
+	 * the save was accepted and is aborted if it was not — unless {@code player-data.on-flush-failure} says
+	 * to proceed with the last known snapshot. Either way the backend is told the outcome, so its own
+	 * bookkeeping (the revision it will base the next save on) stays correct.
+	 *
+	 * @param connection the backend connection the request arrived through
+	 * @param request the request
+	 */
+	private void handlePlayerDataSaveRequest(ServerConnection connection, BridgeMessage.PlayerDataSaveRequest request) {
+		if (playerData == null) {
+			return;
+		}
+		String serverName = connection.getServerInfo().getName();
+		if (!request.serverId().equals(serverName)) {
+			logger.warn("OpenDonut: backend '{}' tried to save player data as '{}'; the proxy's name for that "
+					+ "connection wins", serverName, request.serverId());
+		}
+
+		PlayerDataCoordinator.SaveOutcome outcome = playerData.handleSaveRequest(
+				request.playerId(), serverName, request.baseRevision(), request.envelope(),
+				System.currentTimeMillis());
+		sendTo(connection, new BridgeMessage.PlayerDataSaveResult(
+				request.playerId(), outcome.accepted(), outcome.revision(), outcome.detail()));
+
+		if (outcome.accepted()) {
+			logger.info("OpenDonut: stored the data of {} from '{}' ({})", request.playerId(), serverName,
+					outcome.detail());
+		} else {
+			logger.warn("OpenDonut: refused the data of {} from '{}': {}", request.playerId(), serverName,
+					outcome.detail());
+		}
+
+		FlushWait wait = flushes.get(request.playerId());
+		if (wait == null || !wait.transfer().fromServerId().equals(serverName)) {
+			// An ordinary periodic or disconnect save, not an answer to a flush.
+			return;
+		}
+		if (outcome.accepted()) {
+			moveLeaseAndConnect(wait, request.playerId(), serverName);
+		} else if (config.playerData().mayProceedWithoutFreshData()) {
+			logger.warn("OpenDonut: the flush for {} failed ({}), but player-data.on-flush-failure is "
+					+ "proceed-with-last-known, so the transfer continues with the last stored snapshot",
+					request.playerId(), outcome.detail());
+			moveLeaseAndConnect(wait, request.playerId(), serverName);
+		} else {
+			abortTransferForFlush(wait, "the source could not save the player's data: " + outcome.detail());
+		}
+	}
+
+	/**
+	 * Moves the player's lease to the transfer's destination and starts the connection, once the flush is
+	 * committed.
+	 *
+	 * @param wait the flush wait
+	 * @param playerId the player
+	 * @param fromServerId the source server id
+	 */
+	private void moveLeaseAndConnect(FlushWait wait, UUID playerId, String fromServerId) {
+		ProxyRoutingTable.PendingTransfer transfer = wait.transfer();
+		String detail = playerData.moveLease(playerId, fromServerId, transfer.toServerId(),
+				System.currentTimeMillis());
+		logger.info("OpenDonut: {}; moving {} to '{}'", detail, playerId, transfer.toServerId());
+		leaseHolders.put(playerId, transfer.toServerId());
+		flushes.remove(playerId, wait);
+		startConnection(wait.sourceConnection(), transfer);
+	}
+
+	/**
+	 * Hands a moved lease back to the source server when a transfer is abandoned, so a failed move does not
+	 * lock the player out until the lease expires.
+	 *
+	 * @param transfer the abandoned transfer
+	 */
+	private void returnLeaseIfMoved(ProxyRoutingTable.PendingTransfer transfer) {
+		String holder = leaseHolders.remove(transfer.playerId());
+		if (playerData != null && holder != null && !holder.equals(transfer.fromServerId())) {
+			logger.info("OpenDonut: {}", playerData.moveLease(
+					transfer.playerId(), holder, transfer.fromServerId(), System.currentTimeMillis()));
+		}
+	}
+
+	/**
+	 * Aborts a transfer whose flush failed or timed out, telling the source so its failure policy applies.
+	 *
+	 * @param wait the flush wait
+	 * @param reason the explanation
+	 */
+	private void abortTransferForFlush(FlushWait wait, String reason) {
+		ProxyRoutingTable.PendingTransfer transfer = wait.transfer();
+		flushes.remove(transfer.playerId(), wait);
+		routing.clearPending(transfer.playerId());
+		logger.warn("OpenDonut: refusing to move {} to '{}': {}", transfer.playerId(), transfer.toServerId(),
+				reason);
+		sendTo(wait.sourceConnection(), new BridgeMessage.TransferResult(transfer.playerId(),
+				transfer.fromServerId(), transfer.toServerId(), false, reason,
+				transfer.globalX(), transfer.globalY(), transfer.globalZ()));
+	}
+
+	/**
+	 * Watches a flush wait and aborts the transfer when the deadline passes.
+	 *
+	 * @param wait the flush wait
+	 */
+	private void scheduleFlushTimeout(FlushWait wait) {
+		long pollMillis = 250L;
+		server.getScheduler().buildTask(this, task -> {
+			FlushWait current = flushes.get(wait.transfer().playerId());
+			if (current == null || current != wait) {
+				task.cancel();
+				return;
+			}
+			if (System.currentTimeMillis() < wait.deadlineMillis()) {
+				return;
+			}
+			task.cancel();
+			if (config.playerData().mayProceedWithoutFreshData()) {
+				logger.warn("OpenDonut: the flush for {} did not arrive within {} second(s), but "
+						+ "player-data.on-flush-failure is proceed-with-last-known, so the transfer continues "
+						+ "with the last stored snapshot", wait.transfer().playerId(),
+						config.playerData().flushTimeoutSeconds());
+				moveLeaseAndConnect(wait, wait.transfer().playerId(), wait.transfer().fromServerId());
+			} else {
+				abortTransferForFlush(wait, "the source did not save the player's data within "
+						+ config.playerData().flushTimeoutSeconds() + " second(s)");
+			}
+		}).delay(pollMillis, TimeUnit.MILLISECONDS).repeat(pollMillis, TimeUnit.MILLISECONDS).schedule();
 	}
 
 	/**
@@ -483,6 +755,22 @@ public final class OpenDonutVelocityPlugin {
 				System.currentTimeMillis());
 		routing.markPending(transfer);
 
+		// With player-data sync on, the source must commit the player's snapshot before the connection
+		// request is issued: the player is never moved away from data that nobody has stored. The flush is
+		// answered by a PLAYER_DATA_SAVE_REQUEST, which handlePlayerDataSaveRequest turns into the connect.
+		if (playerData != null) {
+			FlushWait wait = new FlushWait(transfer, connection,
+					System.currentTimeMillis() + config.playerData().flushTimeoutMillis(), false);
+			flushes.put(transfer.playerId(), wait);
+			sendTo(connection, new BridgeMessage.PlayerDataFlushRequest(
+					transfer.playerId(), sourceServerName, destination.id()));
+			scheduleFlushTimeout(wait);
+			logger.info("OpenDonut: holding the move of {} to '{}' until '{}' saves their data (up to {} s)",
+					player.getUsername(), destination.id(), sourceServerName,
+					config.playerData().flushTimeoutSeconds());
+			return;
+		}
+
 		if (admission == ProxyRoutingTable.Admission.PROVISIONAL) {
 			logger.info("OpenDonut: moving {} from '{}' to '{}' at global ({}, {}, {}) because {}. '{}' has "
 							+ "not announced itself yet — it will do so as this player arrives, and their "
@@ -496,8 +784,30 @@ public final class OpenDonutVelocityPlugin {
 					request.globalY(), request.globalZ(), request.reason());
 		}
 
-		player.createConnectionRequest(target.get()).connect()
-				.whenComplete((result, error) -> completeTransfer(connection, transfer, result, error));
+		startConnection(connection, transfer);
+	}
+
+	/**
+	 * Issues the connection request for an accepted transfer.
+	 *
+	 * @param sourceConnection the requesting backend's connection
+	 * @param transfer the transfer
+	 */
+	private void startConnection(ServerConnection sourceConnection, ProxyRoutingTable.PendingTransfer transfer) {
+		Optional<RegisteredServer> target = server.getServer(transfer.toServerId());
+		Optional<Player> maybePlayer = server.getPlayer(transfer.playerId());
+		if (target.isEmpty() || maybePlayer.isEmpty()) {
+			routing.clearPending(transfer.playerId());
+			String reason = target.isEmpty()
+					? "the proxy has no server registered as '" + transfer.toServerId() + "'"
+					: "the player is not connected to this proxy any more";
+			sendTo(sourceConnection, new BridgeMessage.TransferResult(transfer.playerId(),
+					transfer.fromServerId(), transfer.toServerId(), false, reason,
+					transfer.globalX(), transfer.globalY(), transfer.globalZ()));
+			return;
+		}
+		maybePlayer.get().createConnectionRequest(target.get()).connect()
+				.whenComplete((result, error) -> completeTransfer(sourceConnection, transfer, result, error));
 	}
 
 	/**
@@ -516,6 +826,7 @@ public final class OpenDonutVelocityPlugin {
 
 		if (error != null) {
 			routing.clearPending(transfer.playerId());
+			returnLeaseIfMoved(transfer);
 			logger.error("OpenDonut: the connection request for {} to '{}' failed: {}",
 					transfer.playerId(), transfer.toServerId(), error.toString());
 			sendTo(sourceConnection, new BridgeMessage.TransferResult(transfer.playerId(),
@@ -542,6 +853,7 @@ public final class OpenDonutVelocityPlugin {
 		}
 
 		routing.clearPending(transfer.playerId());
+		returnLeaseIfMoved(transfer);
 		String reason = result.getStatus().name() + result.getReasonComponent()
 				.map(component -> " (" + component + ")")
 				.orElse("");
@@ -679,6 +991,7 @@ public final class OpenDonutVelocityPlugin {
 	private void returnPlayer(Player player, ProxyRoutingTable.PendingTransfer transfer, String reason) {
 		logger.warn("OpenDonut: {} cannot stay on '{}' because {}, returning them to '{}'",
 				player.getUsername(), transfer.toServerId(), reason, transfer.fromServerId());
+		returnLeaseIfMoved(transfer);
 
 		Optional<RegisteredServer> source = server.getServer(transfer.fromServerId());
 		if (source.isEmpty()) {
@@ -732,6 +1045,10 @@ public final class OpenDonutVelocityPlugin {
 	/**
 	 * Forgets a player's transfer state when they disconnect.
 	 *
+	 * <p>The lease itself is deliberately left to expire: a player who disconnects mid-transfer may still be
+	 * reconnecting, and releasing the lease here would let a second backend take it while the first still
+	 * holds the player's live data.
+	 *
 	 * @param event the disconnect event
 	 */
 	@Subscribe
@@ -739,6 +1056,18 @@ public final class OpenDonutVelocityPlugin {
 		if (routing != null) {
 			routing.clearPending(event.getPlayer().getUniqueId());
 		}
+		flushes.remove(event.getPlayer().getUniqueId());
+		leaseHolders.remove(event.getPlayer().getUniqueId());
+	}
+
+	/**
+	 * Closes the player-data store when the proxy stops.
+	 *
+	 * @param event the shutdown event
+	 */
+	@Subscribe
+	public void onProxyShutdown(ProxyShutdownEvent event) {
+		closePlayerDataStore();
 	}
 
 	/**
@@ -823,6 +1152,11 @@ public final class OpenDonutVelocityPlugin {
 	/** @return the channel identifier, or {@code null} before initialisation */
 	ChannelIdentifier channel() {
 		return channel;
+	}
+
+	/** @return the player-data coordinator, or {@code null} when synchronisation is off */
+	PlayerDataCoordinator playerData() {
+		return playerData;
 	}
 
 	/**

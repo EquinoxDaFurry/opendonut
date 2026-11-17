@@ -15,6 +15,7 @@ import net.opendonut.common.model.BackendSettings;
 import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.BridgeSettings;
 import net.opendonut.common.model.OpenDonutConfig;
+import net.opendonut.common.model.PlayerDataSettings;
 import net.opendonut.common.model.ProxySettings;
 import net.opendonut.common.model.RegionBounds;
 import net.opendonut.common.model.SeedSpec;
@@ -51,7 +52,7 @@ final class ConfigParser {
 
 	private static final Set<String> ROOT_KEYS = Set.of(
 			"config-version", "world", "servers", "validation", "bridge", "proxy", "transfer", "backend",
-			"border-particles");
+			"border-particles", "player-data");
 	private static final Set<String> WORLD_KEYS = Set.of("name", "seed", "border");
 	private static final Set<String> BORDER_KEYS = Set.of("center-x", "center-z", "size");
 	private static final Set<String> SERVER_KEYS = Set.of("id", "address", "bounds");
@@ -69,6 +70,9 @@ final class ConfigParser {
 	private static final Set<String> BACKEND_KEYS = Set.of("server-id", "enabled");
 	private static final Set<String> BORDER_PARTICLES_KEYS =
 			Set.of("enabled", "particle", "radius", "interval-ticks", "max-per-side");
+	private static final Set<String> PLAYER_DATA_KEYS = Set.of(
+			"enabled", "storage", "file", "sync-interval-seconds", "lease-seconds", "on-flush-failure",
+			"scope", "keep-history", "max-payload-bytes", "flush-timeout-seconds");
 
 	private final ValidationResult.Collector issues;
 	private final YamlAccess yaml;
@@ -111,6 +115,7 @@ final class ConfigParser {
 		BackendSettings backend = parseBackend(rootEntries.get("backend"), policy);
 		BorderParticleSettings borderParticles =
 				parseBorderParticles(rootEntries.get("border-particles"), policy);
+		PlayerDataSettings playerData = parsePlayerData(rootEntries.get("player-data"), policy);
 
 		yaml.reportUnknownKeys(rootEntries, "", ROOT_KEYS, policy);
 
@@ -121,7 +126,8 @@ final class ConfigParser {
 		}
 
 		return Optional.of(new OpenDonutConfig(
-				sourceName, world, servers, validation, bridge, proxy, transfer, backend, borderParticles));
+				sourceName, world, servers, validation, bridge, proxy, transfer, backend, borderParticles,
+				playerData));
 	}
 
 	/**
@@ -452,6 +458,53 @@ final class ConfigParser {
 			return new BorderParticleSettings(enabled, particle, radius, interval, maxPerSide);
 		} catch (IllegalArgumentException e) {
 			yaml.report(IssueCode.INVALID_VALUE, "border-particles", YamlAccess.lineOf(mapping), e.getMessage());
+			return settings;
+		}
+	}
+
+	/**
+	 * Parses the {@code player-data} section.
+	 *
+	 * <p>Every key is optional and the whole section defaults to disabled: player-data synchronisation is
+	 * opt-in, so a network that upgrades to a build that has it keeps behaving exactly as it did until an
+	 * administrator turns it on.
+	 *
+	 * @param node the section node, may be {@code null}
+	 * @param policy what to do with unrecognised keys
+	 * @return the settings
+	 */
+	private PlayerDataSettings parsePlayerData(Node node, UnknownFieldPolicy policy) {
+		MappingNode mapping = yaml.asMapping(node, "player-data", false);
+		PlayerDataSettings settings = PlayerDataSettings.DEFAULT;
+		if (mapping == null) {
+			return settings;
+		}
+		sourceMap.put("player-data", YamlAccess.lineOf(node));
+		Map<String, Node> entries = yaml.entries(mapping, "player-data");
+
+		Boolean enabled = yaml.readBoolean(entries, "enabled", "player-data", settings.enabled());
+		String storage = yaml.readString(entries, "storage", "player-data", settings.storage(), false);
+		String file = yaml.readString(entries, "file", "player-data", settings.file(), false);
+		Integer syncInterval = yaml.readInt(entries, "sync-interval-seconds", "player-data",
+				settings.syncIntervalSeconds(), false);
+		Integer leaseSeconds = yaml.readInt(entries, "lease-seconds", "player-data", settings.leaseSeconds(), false);
+		PlayerDataSettings.OnFlushFailure onFlushFailure = yaml.readEnum(entries, "on-flush-failure", "player-data",
+				settings.onFlushFailure(), PlayerDataSettings.OnFlushFailure::parse,
+				"refuse-transfer, proceed-with-last-known");
+		PlayerDataSettings.SyncScope scope = yaml.readEnum(entries, "scope", "player-data", settings.scope(),
+				PlayerDataSettings.SyncScope::parse, "session, progress, everything");
+		Integer keepHistory = yaml.readInt(entries, "keep-history", "player-data", settings.keepHistory(), false);
+		Integer maxPayloadBytes = yaml.readInt(entries, "max-payload-bytes", "player-data",
+				settings.maxPayloadBytes(), false);
+		Integer flushTimeout = yaml.readInt(entries, "flush-timeout-seconds", "player-data",
+				settings.flushTimeoutSeconds(), false);
+		yaml.reportUnknownKeys(entries, "player-data", PLAYER_DATA_KEYS, policy);
+
+		try {
+			return new PlayerDataSettings(enabled, storage, file, syncInterval, leaseSeconds, onFlushFailure,
+					scope, keepHistory, maxPayloadBytes, flushTimeout);
+		} catch (IllegalArgumentException e) {
+			yaml.report(IssueCode.INVALID_VALUE, "player-data", YamlAccess.lineOf(mapping), e.getMessage());
 			return settings;
 		}
 	}

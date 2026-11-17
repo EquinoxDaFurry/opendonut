@@ -33,7 +33,12 @@ Artifacts:
 | `gradle.properties` | The version matrix. Every value in it is documented in [architecture.md](architecture.md#version-matrix) |
 
 The mod jar contains the shared engine and SnakeYAML as nested jars, and the plugin jar is shaded with SnakeYAML
-relocated, so neither needs anything else installed alongside it.
+relocated, so neither needs anything else installed alongside it. The plugin jar also bundles the SQLite JDBC
+driver **unrelocated** on purpose: the driver's native library registers its JNI methods against the hard-coded
+class name `org/sqlite/core/NativeDB`, so relocating `org.sqlite` makes the driver fail at runtime with
+`NoClassDefFoundError` (observed live on 2026-11-17). The trade-off — another plugin on the same proxy that
+bundles a different sqlite-jdbc unrelocated could collide with it — is accepted; if that ever matters, install
+`sqlite-jdbc` as its own jar in `plugins/` instead and drop the shaded copy from the plugin jar.
 
 ---
 

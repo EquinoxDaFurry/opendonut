@@ -1,0 +1,50 @@
+[17:18:41 INFO]: Booting up Velocity 4.3.1...
+[17:18:41 INFO]: Connections will use NIO channels, Java compression, Java ciphers
+[17:18:41 INFO]: Loading localizations...
+[17:18:41 INFO]: Loading plugins...
+[17:18:41 INFO]: Loaded plugin opendonut 0.1.0-dev by OpenDonut contributors
+[17:18:41 INFO]: Loaded 2 plugins
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (border-particles) border particles: end_rod, radius 9, every 4 tick(s), up to 256 per side; the wall is about 254 block(s) across at its widest
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (world.border:25) world border is X=[-100000,100000) Z=[-100000,100000) (40000000000 blocks, 12500 x 12500 chunks)
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (transfer:45) transfer.max-pending-seconds (15) is larger than transfer.cooldown-seconds (5), so the pending timeout is what actually controls how often a failed transfer is retried
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers:53) coverage: 100.000% of the world border is assigned (40000000000 of 40000000000 blocks), using 2 lookup buckets
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[0]:53) region 'west' X=[-100000,0) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25566
+[17:18:41 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[1]:61) region 'east' X=[0,100000) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25567
+[17:18:41 INFO] [opendonut]: OpenDonut: this platform has no POSIX permissions, so OpenDonut cannot verify that plugins\opendonut\secrets\bridge-secret.txt is private; make sure the folder is not shared
+[17:18:42 ERROR]: Couldn't pass ProxyInitializeEvent to opendonut 0.1.0-dev
+java.lang.NoClassDefFoundError: org/sqlite/core/NativeDB
+	at java.base/jdk.internal.loader.NativeLibraries.load(Native Method) ~[?:?]
+	at java.base/jdk.internal.loader.NativeLibraries$NativeLibraryImpl.open(NativeLibraries.java:321) ~[?:?]
+	at java.base/jdk.internal.loader.NativeLibraries.loadLibrary(NativeLibraries.java:187) ~[?:?]
+	at java.base/jdk.internal.loader.NativeLibraries.loadLibrary(NativeLibraries.java:129) ~[?:?]
+	at java.base/java.lang.ClassLoader.loadLibrary(ClassLoader.java:2245) ~[?:?]
+	at java.base/java.lang.Runtime.load0(Runtime.java:767) ~[?:?]
+	at java.base/java.lang.System.load(System.java:1647) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteJDBCLoader.loadNativeLibrary(SQLiteJDBCLoader.java:293) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteJDBCLoader.extractAndLoadLibraryFile(SQLiteJDBCLoader.java:250) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteJDBCLoader.loadSQLiteNativeLibrary(SQLiteJDBCLoader.java:358) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteJDBCLoader.initialize(SQLiteJDBCLoader.java:80) ~[?:?]
+	at net.opendonut.libs.sqlite.core.NativeDB.load(NativeDB.java:70) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteConnection.open(SQLiteConnection.java:261) ~[?:?]
+	at net.opendonut.libs.sqlite.SQLiteConnection.<init>(SQLiteConnection.java:67) ~[?:?]
+	at net.opendonut.libs.sqlite.jdbc3.JDBC3Connection.<init>(JDBC3Connection.java:29) ~[?:?]
+	at net.opendonut.libs.sqlite.jdbc4.JDBC4Connection.<init>(JDBC4Connection.java:19) ~[?:?]
+	at net.opendonut.libs.sqlite.JDBC.createConnection(JDBC.java:114) ~[?:?]
+	at net.opendonut.libs.sqlite.JDBC.connect(JDBC.java:82) ~[?:?]
+	at net.opendonut.common.playerdata.SqlitePlayerDataStore.open(SqlitePlayerDataStore.java:111) ~[?:?]
+	at net.opendonut.velocity.OpenDonutVelocityPlugin.setUpPlayerData(OpenDonutVelocityPlugin.java:312) ~[?:?]
+	at net.opendonut.velocity.OpenDonutVelocityPlugin.reload(OpenDonutVelocityPlugin.java:281) ~[?:?]
+	at net.opendonut.velocity.OpenDonutVelocityPlugin.onProxyInitialize(OpenDonutVelocityPlugin.java:187) ~[?:?]
+	at com.velocitypowered.proxy.event.UntargetedEventHandler$VoidHandler.lambda$buildHandler$0(UntargetedEventHandler.java:56) ~[velocity.jar:4.3.1]
+	at com.velocitypowered.proxy.event.VelocityEventManager.fire(VelocityEventManager.java:553) ~[velocity.jar:4.3.1]
+	at com.velocitypowered.proxy.event.VelocityEventManager.lambda$fire$0(VelocityEventManager.java:542) ~[velocity.jar:4.3.1]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090) ~[?:?]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614) ~[?:?]
+	at java.base/java.lang.Thread.run(Thread.java:1474) [?:?]
+Caused by: java.lang.ClassNotFoundException: org.sqlite.core.NativeDB
+	at com.velocitypowered.proxy.plugin.PluginClassLoader.loadClass0(PluginClassLoader.java:87) ~[velocity.jar:4.3.1]
+	at com.velocitypowered.proxy.plugin.PluginClassLoader.loadClass(PluginClassLoader.java:64) ~[velocity.jar:4.3.1]
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:490) ~[?:?]
+	... 28 more
+[17:18:42 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
+[17:18:42 INFO]: Done (1.26s)!

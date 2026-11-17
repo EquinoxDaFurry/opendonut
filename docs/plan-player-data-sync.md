@@ -1,6 +1,13 @@
 # Plan: synchronising player data across backends
 
-**Status:** design proposal, not implemented. Nothing in this document exists in the code yet.
+**Status:** Option C below is **implemented** (Phase 1, session scope, SQLite store owned by the proxy, no
+chunking). The wire protocol, the lease + compare-and-set store, the flush-before-move transfer sequence and the
+Fabric capture/apply path are in `common`, `velocity-plugin` and `fabric-mod`, covered by unit tests
+(`common/src/test/.../playerdata/`, `BridgeCodecTest`, `ConfigLoaderTest`, `fabric-mod ... PlayerDataCaptureTest`),
+and enabled with the `player-data` config section (default `enabled: false`). End-to-end verification with a real
+client crossing a boundary is tracked in `tests/README.md`. The parts marked "Phase 2+" in this document remain
+unimplemented: chunked snapshots above the frame limit, `progress`/`everything` scopes, PostgreSQL/Redis, and
+entity transport.
 
 This is a plan, written to be argued with. It states the problem precisely, lays out the designs that could
 solve it — including the ones that should be rejected and why — and recommends one for a network whose backends

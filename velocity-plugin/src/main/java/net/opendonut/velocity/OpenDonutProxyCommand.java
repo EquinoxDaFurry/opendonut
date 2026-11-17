@@ -22,6 +22,7 @@ import net.opendonut.common.model.ServerDefinition;
  *   /opendonut backends         what each backend reported about itself
  *   /opendonut route &lt;x&gt; &lt;z&gt;    which server owns a global coordinate, per the proxy's table
  *   /opendonut seed             the authoritative world seed and the server.properties line for it
+ *   /opendonut playerdata       the player-data synchronisation state (store, settings)
  *   /opendonut reload           re-read the configuration without restarting the proxy
  * </pre>
  *
@@ -57,6 +58,7 @@ final class OpenDonutProxyCommand implements SimpleCommand {
 			case "backends" -> backends(source);
 			case "seed" -> seed(source);
 			case "route" -> route(source, arguments);
+			case "playerdata" -> playerData(source);
 			case "reload" -> reload(source);
 			case "help" -> help(source);
 			default -> {
@@ -77,7 +79,8 @@ final class OpenDonutProxyCommand implements SimpleCommand {
 
 	@Override
 	public List<String> suggest(Invocation invocation) {
-		List<String> options = List.of("status", "regions", "backends", "seed", "route", "reload", "help");
+		List<String> options = List.of(
+				"status", "regions", "backends", "seed", "route", "playerdata", "reload", "help");
 		String[] arguments = invocation.arguments();
 		if (arguments.length <= 1) {
 			String prefix = arguments.length == 1 ? arguments[0].toLowerCase(Locale.ROOT) : "";
@@ -209,6 +212,25 @@ final class OpenDonutProxyCommand implements SimpleCommand {
 	}
 
 	/**
+	 * Prints the player-data synchronisation state: the settings and what the store holds.
+	 *
+	 * @param source the command source
+	 */
+	private void playerData(CommandSource source) {
+		if (!requireActive(source)) {
+			return;
+		}
+		if (plugin.playerData() == null) {
+			source.sendPlainMessage("[OpenDonut] player-data is not enabled (player-data.enabled: false), "
+					+ "or the store could not be opened. See the proxy log.");
+			return;
+		}
+		for (String line : plugin.playerData().describe().split("\\R")) {
+			source.sendPlainMessage("[OpenDonut] " + line);
+		}
+	}
+
+	/**
 	 * Re-reads the configuration.
 	 *
 	 * @param source the command source
@@ -230,7 +252,7 @@ final class OpenDonutProxyCommand implements SimpleCommand {
 	 * @param source the command source
 	 */
 	private void help(CommandSource source) {
-		source.sendPlainMessage("[OpenDonut] /opendonut status|regions|backends|seed|route <x> <z>|reload");
+		source.sendPlainMessage("[OpenDonut] /opendonut status|regions|backends|seed|route <x> <z>|playerdata|reload");
 	}
 
 	/**

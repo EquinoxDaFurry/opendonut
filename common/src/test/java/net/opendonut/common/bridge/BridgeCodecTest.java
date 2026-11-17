@@ -89,6 +89,88 @@ class BridgeCodecTest {
 		}
 
 		@Test
+		@DisplayName("PLAYER_DATA_LOAD_REQUEST survives encoding and decoding intact")
+		void playerDataLoadRequest() {
+			BridgeMessage.PlayerDataLoadRequest sent =
+					new BridgeMessage.PlayerDataLoadRequest(UUID.randomUUID(), "east");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("PLAYER_DATA_LOAD_RESPONSE survives encoding and decoding intact, payload byte-identical")
+		void playerDataLoadResponse() {
+			byte[] envelope = new byte[1024];
+			new java.util.Random(5).nextBytes(envelope);
+			BridgeMessage.PlayerDataLoadResponse sent = new BridgeMessage.PlayerDataLoadResponse(
+					UUID.randomUUID(), true, 42L, envelope, "snapshot revision 42, 1024 bytes");
+			BridgeMessage.PlayerDataLoadResponse received = assertInstanceOf(
+					BridgeMessage.PlayerDataLoadResponse.class, decodeOrFail(
+							BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()),
+							SECRET, new NonceCache()));
+			assertEquals(sent.playerId(), received.playerId());
+			assertTrue(received.present());
+			assertEquals(42L, received.revision());
+			assertArrayEquals(envelope, received.envelope());
+			assertEquals(sent.detail(), received.detail());
+		}
+
+		@Test
+		@DisplayName("PLAYER_DATA_LOAD_RESPONSE with no stored data carries an empty payload")
+		void playerDataLoadResponseEmpty() {
+			BridgeMessage.PlayerDataLoadResponse sent = new BridgeMessage.PlayerDataLoadResponse(
+					UUID.randomUUID(), false, 0L, new byte[0], "no snapshot is stored for this player yet");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("PLAYER_DATA_SAVE_REQUEST survives encoding and decoding intact, payload byte-identical")
+		void playerDataSaveRequest() {
+			byte[] envelope = new byte[48 * 1024 - 64];
+			new java.util.Random(6).nextBytes(envelope);
+			BridgeMessage.PlayerDataSaveRequest sent = new BridgeMessage.PlayerDataSaveRequest(
+					UUID.randomUUID(), "west", 7L, envelope);
+			BridgeMessage.PlayerDataSaveRequest received = assertInstanceOf(
+					BridgeMessage.PlayerDataSaveRequest.class, decodeOrFail(
+							BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()),
+							SECRET, new NonceCache()));
+			assertEquals(sent.playerId(), received.playerId());
+			assertEquals("west", received.serverId());
+			assertEquals(7L, received.baseRevision());
+			assertArrayEquals(envelope, received.envelope());
+		}
+
+		@Test
+		@DisplayName("PLAYER_DATA_SAVE_RESULT survives encoding and decoding intact")
+		void playerDataSaveResult() {
+			BridgeMessage.PlayerDataSaveResult sent = new BridgeMessage.PlayerDataSaveResult(
+					UUID.randomUUID(), true, 8L, "stored as revision 8");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("PLAYER_DATA_FLUSH_REQUEST survives encoding and decoding intact")
+		void playerDataFlushRequest() {
+			BridgeMessage.PlayerDataFlushRequest sent =
+					new BridgeMessage.PlayerDataFlushRequest(UUID.randomUUID(), "west", "east");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("encoding a message whose payload would exceed the frame limit is refused, not truncated")
+		void oversizedPayloadRefused() {
+			byte[] tooBig = new byte[BridgeCodec.MAX_PAYLOAD_BYTES + 1];
+			BridgeMessage.PlayerDataSaveRequest sent = new BridgeMessage.PlayerDataSaveRequest(
+					UUID.randomUUID(), "west", 0L, tooBig);
+			IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+					() -> BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()));
+			assertTrue(e.getMessage().contains("exceeds"), e.getMessage());
+		}
+
+		@Test
 		@DisplayName("an unknown seed keeps its sentinel value")
 		void unknownSeed() {
 			BridgeMessage.Hello sent = new BridgeMessage.Hello("west", "world",
@@ -243,6 +325,41 @@ class BridgeCodecTest {
 			NonceCache cache = new NonceCache();
 			assertTrue(BridgeCodec.decode(frame, SECRET, NOW, 30, cache).isAccepted());
 			assertEquals(DecodeFailure.REPLAY, failureOf(frame, SECRET, NOW, 30, cache));
+		}
+
+		@Test
+		@DisplayName("a validly signed frame whose inner byte array lies about its length is refused as malformed")
+		void lyingInnerByteArray() throws Exception {
+			// A PLAYER_DATA_SAVE_REQUEST whose envelope field claims 0x7FFFFFFF bytes: the frame itself is
+			// properly signed, so this is purely the payload parser's job, and it must refuse before allocating.
+			java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+			java.io.DataOutputStream bodyOut = new java.io.DataOutputStream(body);
+			bodyOut.write(new byte[BridgeCodec.NONCE_LENGTH]); // nonce
+			bodyOut.writeLong(NOW);                             // timestamp
+			bodyOut.writeLong(UUID.randomUUID().getMostSignificantBits());
+			bodyOut.writeLong(UUID.randomUUID().getLeastSignificantBits());
+			bodyOut.writeUTF("west");
+			bodyOut.writeLong(0L);                              // base revision
+			bodyOut.writeInt(0x7FFF_FFFF);                      // the lie: declared envelope length
+			bodyOut.write(new byte[] {1, 2, 3});                // far less than declared
+			byte[] payload = body.toByteArray();
+
+			java.io.ByteArrayOutputStream frame = new java.io.ByteArrayOutputStream();
+			java.io.DataOutputStream out = new java.io.DataOutputStream(frame);
+			out.write(BridgeCodec.MAGIC);
+			out.writeByte(BridgeCodec.PROTOCOL_VERSION);
+			out.writeByte(MessageType.PLAYER_DATA_SAVE_REQUEST.wireId());
+			out.writeInt(payload.length);
+			out.write(payload);
+			byte[] signed = frame.toByteArray();
+
+			javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+			mac.init(new javax.crypto.spec.SecretKeySpec(SECRET, "HmacSHA256"));
+			byte[] tagged = mac.doFinal(signed);
+			frame.write(tagged);
+
+			assertEquals(DecodeFailure.MALFORMED_PAYLOAD,
+					failureOf(frame.toByteArray(), SECRET, NOW, 30, new NonceCache()));
 		}
 
 		@Test

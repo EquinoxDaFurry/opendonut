@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.OpenDonutConfig;
+import net.opendonut.common.model.PlayerDataSettings;
 import net.opendonut.common.model.TransferFailurePolicy;
 import net.opendonut.common.model.UnknownFieldPolicy;
 import net.opendonut.common.model.UnassignedAreaPolicy;
@@ -166,6 +167,137 @@ class ConfigLoaderTest {
 		@DisplayName("a missing config-version is accepted and defaults to the current schema")
 		void versionIsOptional() {
 			assertTrue(load(VALID.replace("config-version: 1", "")).isUsable());
+		}
+	}
+
+	@Nested
+	@DisplayName("the player-data section")
+	class PlayerData {
+
+		@Test
+		@DisplayName("is absent by default: disabled, sqlite, session scope, opt-in")
+		void absentMeansDisabled() {
+			OpenDonutConfig config = load(VALID).config().orElseThrow();
+			PlayerDataSettings settings = config.playerData();
+			assertFalse(settings.enabled(), "player-data must be opt-in, so an old config keeps its old behaviour");
+			assertEquals(PlayerDataSettings.STORAGE_SQLITE, settings.storage());
+			assertEquals(PlayerDataSettings.SyncScope.SESSION, settings.scope());
+			assertEquals(PlayerDataSettings.OnFlushFailure.REFUSE_TRANSFER, settings.onFlushFailure());
+			assertFalse(settings.mayProceedWithoutFreshData());
+		}
+
+		@Test
+		@DisplayName("every documented key is read")
+		void allKeys() {
+			String yaml = VALID + """
+					player-data:
+					  enabled: true
+					  storage: sqlite
+					  file: "my-data.db"
+					  sync-interval-seconds: 30
+					  lease-seconds: 45
+					  on-flush-failure: proceed-with-last-known
+					  scope: session
+					  keep-history: 5
+					  max-payload-bytes: 32768
+					  flush-timeout-seconds: 7
+					""";
+			ConfigLoadResult result = load(yaml);
+			assertTrue(result.isUsable(), () -> result.result().formatWithSummary());
+			PlayerDataSettings settings = result.config().orElseThrow().playerData();
+			assertTrue(settings.enabled());
+			assertEquals("sqlite", settings.storage());
+			assertEquals("my-data.db", settings.file());
+			assertEquals(30, settings.syncIntervalSeconds());
+			assertEquals(30_000L, settings.syncIntervalMillis());
+			assertEquals(45, settings.leaseSeconds());
+			assertEquals(45_000L, settings.leaseMillis());
+			assertEquals(PlayerDataSettings.OnFlushFailure.PROCEED_WITH_LAST_KNOWN, settings.onFlushFailure());
+			assertTrue(settings.mayProceedWithoutFreshData());
+			assertEquals(PlayerDataSettings.SyncScope.SESSION, settings.scope());
+			assertEquals(5, settings.keepHistory());
+			assertEquals(32768, settings.maxPayloadBytes());
+			assertEquals(7, settings.flushTimeoutSeconds());
+			assertEquals(7_000L, settings.flushTimeoutMillis());
+		}
+
+		@Test
+		@DisplayName("enabled: true with nothing else uses every default")
+		void enabledOnly() {
+			OpenDonutConfig config = load(VALID + """
+					player-data:
+					  enabled: true
+					""").config().orElseThrow();
+			PlayerDataSettings settings = config.playerData();
+			assertTrue(settings.enabled());
+			assertEquals(PlayerDataSettings.DEFAULT_FILE, settings.file());
+			assertEquals(60, settings.syncIntervalSeconds());
+			assertEquals(10, settings.flushTimeoutSeconds());
+		}
+
+		@Test
+		@DisplayName("an unimplemented storage is a reported error, and the document is unusable")
+		void unimplementedStorage() {
+			ConfigLoadResult result = load(VALID + """
+					player-data:
+					  enabled: true
+					  storage: postgresql
+					""");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> "expected an INVALID_VALUE finding but got:\n" + result.result().formatWithSummary());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("an unimplemented scope is a reported error")
+		void unimplementedScope() {
+			ConfigLoadResult result = load(VALID + """
+					player-data:
+					  enabled: true
+					  scope: everything
+					""");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> "expected an INVALID_VALUE finding but got:\n" + result.result().formatWithSummary());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("an out-of-range value is a reported error naming the section")
+		void outOfRange() {
+			ConfigLoadResult result = load(VALID + """
+					player-data:
+					  enabled: true
+					  flush-timeout-seconds: 0
+					""");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.result().formatWithSummary().contains("player-data"),
+					"the finding must name the section:\n" + result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("an unknown key in the section is reported under the configured policy")
+		void unknownKey() {
+			ConfigLoadResult result = load(VALID + """
+					player-data:
+					  enabled: true
+					  chunk-size: 4096
+					""");
+			// The default policy is WARN, so the document stays usable but the finding exists.
+			assertTrue(result.isUsable());
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD),
+					() -> result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("a bad enum spelling is a reported error, not a silent default")
+		void badEnum() {
+			ConfigLoadResult result = load(VALID + """
+					player-data:
+					  on-flush-failure: explode
+					""");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
 		}
 	}
 

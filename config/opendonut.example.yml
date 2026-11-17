@@ -220,6 +220,63 @@ border-particles:
   max-per-side: 256
 
 # -----------------------------------------------------------------------------
+#  Player data synchronisation (off by default; the proxy owns the store)
+# -----------------------------------------------------------------------------
+#
+# When a player crosses a boundary, their inventory, armour, off-hand, ender
+# chest, health, hunger, experience, selected slot, effects, fire and air are
+# saved by the server they leave and applied by the server they arrive on, so
+# the transfer feels like walking within one world. The proxy keeps one
+# versioned snapshot per player in a small SQLite database and only lets the
+# server that currently owns the player write it.
+#
+# This section is OFF by default: a network that upgrades keeps behaving exactly
+# as before until it is turned on. The proxy and every backend must have the
+# same section, and the bridge must be enabled (it is by default).
+#
+# player-data:
+#   # Master switch. false = transfers behave as they always have.
+#   enabled: false
+#
+#   # Where the proxy stores the snapshots. Only 'sqlite' exists in this version.
+#   storage: sqlite
+#
+#   # The database file. Relative paths are resolved against the proxy's plugin
+#   # data directory. Must be a plain file name, not a path.
+#   file: playerdata.db
+#
+#   # Periodic save while a player is online, in seconds. 0 = save only on
+#   # transfer and disconnect. Bounds what a crash can lose.
+#   sync-interval-seconds: 60
+#
+#   # How long the server a player is on may write their data, in seconds. If
+#   # that server crashes, another may take over after this expires.
+#   lease-seconds: 60
+#
+#   # What happens when the server a player is leaving cannot save their data
+#   # in time: refuse-transfer (default) leaves the player where they are;
+#   # proceed-with-last-known moves them with the last stored snapshot.
+#   on-flush-failure: refuse-transfer
+#
+#   # How much of the player travels. Only 'session' is implemented: inventory,
+#   # ender chest, health, hunger, XP, effects, equipment, held slot. 'progress'
+#   # and 'everything' are planned and rejected with an error if set.
+#   scope: session
+#
+#   # How many previous snapshots per player to keep in the database, for
+#   # recovery after a bad transfer. 0 keeps none.
+#   keep-history: 20
+#
+#   # The largest snapshot, after compression, that fits one bridge frame, in
+#   # bytes. A snapshot bigger than this refuses the transfer with an
+#   # explanation rather than being truncated. 48 KiB is the default.
+#   max-payload-bytes: 49152
+#
+#   # How long the proxy waits for the leaving server to save the player before
+#   # refusing the transfer, in seconds. Must stay below transfer.max-pending-seconds.
+#   flush-timeout-seconds: 10
+
+# -----------------------------------------------------------------------------
 #  This instance (backends only; the proxy ignores it)
 # -----------------------------------------------------------------------------
 # A backend usually works out which entry below is its own by comparing its

@@ -53,9 +53,10 @@ import net.opendonut.common.region.RegionIndex;
  *   <li><b>It does not move players between servers itself.</b> Only the proxy can do that. A backend
  *       cannot open a connection to another backend on a player's behalf, and it must not try: the proxy
  *       owns the player's session.</li>
- *   <li><b>It does not synchronise inventories, health or experience.</b> Those live in each backend's own
- *       player data. Transferring a player today gives them the destination server's copy of their data.
- *       This is a known, documented limitation of 0.1.0-dev, not a hidden one.</li>
+ *   <li><b>It does not synchronise player data by itself.</b> Synchronisation happens through the proxy's
+ *       store over the bridge (see {@link PlayerDataSync}), and only when {@code player-data.enabled} is
+ *       true; with it false, a transfer gives the player the destination's own copy of their data, exactly
+ *       as before.</li>
  *   <li><b>It does not teleport a player across a boundary by itself.</b> A player who is inside their own
  *       region is never touched, so terrain, Y position and view direction stay exactly as the client sees
  *       them until the proxy actually moves them.</li>
@@ -83,6 +84,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 
 	private MinecraftServer server;
 	private BackendBridge bridge;
+	private PlayerDataSync playerDataSync;
 	private Optional<BorderParticles> borderParticles = Optional.empty();
 	private Path configPath;
 	private Path configDirectory;
@@ -172,6 +174,8 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		backend.configPath = configPath;
 		backend.configDirectory = configDirectory;
 		backend.setUpBridge(server, configDirectory, configPath);
+		backend.playerDataSync = PlayerDataSync.create(server, config, backend.bridge, identity.get().id(), logger)
+				.orElse(null);
 		backend.borderParticles = BorderParticles.create(config.borderParticles(), logger);
 		// The full "who am I and where am I" summary is logged by completeStartup, once the world is known.
 		return Optional.of(backend);
@@ -473,6 +477,11 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		tracker.forget(player.getUUID());
 		tracker.markJoined(player.getUUID(), server.getTickCount());
 		helloIfDue(player);
+		// Ask the proxy for the stored snapshot before the player can meaningfully play; the answer arrives
+		// on this same connection a moment later and is applied by onPlayerDataLoadResponse.
+		if (playerDataSync != null) {
+			playerDataSync.onPlayerJoin(player);
+		}
 	}
 
 	/**
@@ -481,6 +490,10 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	 * @param player the player
 	 */
 	public void onPlayerDisconnect(ServerPlayer player) {
+		// Save first, while the player object is still valid and still holds their items.
+		if (playerDataSync != null) {
+			playerDataSync.onPlayerDisconnect(player);
+		}
 		tracker.forget(player.getUUID());
 		borderParticles.ifPresent(particles -> particles.forget(player.getUUID()));
 	}
@@ -529,6 +542,12 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		// Cosmetic, and deliberately before every other check: a player should see where their region ends even
 		// when this backend is not allowed to transfer them, because that is exactly when knowing matters.
 		borderParticles.ifPresent(particles -> particles.tick(players, self.bounds(), server.getTickCount()));
+
+		// Player-data saving runs even when transfers are disabled: the store can still be filled, so a later
+		// re-enable of transfers starts from real data.
+		if (playerDataSync != null) {
+			playerDataSync.tick(server);
+		}
 
 		if (bridge == null || !transfersEnabled) {
 			return;
@@ -894,6 +913,30 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		}
 	}
 
+	@Override
+	public void onPlayerDataLoadResponse(BridgeMessage.PlayerDataLoadResponse response) {
+		if (playerDataSync != null) {
+			playerDataSync.onLoadResponse(response);
+		}
+	}
+
+	@Override
+	public void onPlayerDataSaveResult(BridgeMessage.PlayerDataSaveResult result) {
+		if (playerDataSync != null) {
+			playerDataSync.onSaveResult(result);
+		}
+	}
+
+	@Override
+	public void onPlayerDataFlushRequest(BridgeMessage.PlayerDataFlushRequest request) {
+		if (playerDataSync != null) {
+			playerDataSync.onFlushRequest(request);
+		} else {
+			logger.warn("OpenDonut: the proxy asked this server to flush {} but player-data sync is not active "
+					+ "here; the transfer will time out and be refused", request.playerId());
+		}
+	}
+
 	/** @return the configuration this backend is running on */
 	public OpenDonutConfig config() {
 		return config;
@@ -946,6 +989,11 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		return Optional.ofNullable(bridge);
 	}
 
+	/** @return the player-data synchroniser, or {@code null} when it is not active */
+	PlayerDataSync playerDataSync() {
+		return playerDataSync;
+	}
+
 	/** @return how many transfers this backend has asked for since it started */
 	public int transfersRequested() {
 		return transfersRequested;
@@ -980,6 +1028,10 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		out.append("  activity    : ").append(transfersRequested).append(" requested, ")
 				.append(transfersRejected).append(" refused").append(System.lineSeparator());
 		out.append("  players     : ").append(tracker.describe()).append(System.lineSeparator());
+		out.append("  player data : ")
+				.append(playerDataSync == null ? "disabled (player-data.enabled: false)"
+						: playerDataSync.describe())
+				.append(System.lineSeparator());
 		bridge().ifPresent(b -> out.append("  bridge      : ").append(b.sentFrames()).append(" sent, ")
 				.append(b.receivedFrames()).append(" received, ").append(b.rejectedFrames())
 				.append(" refused, ").append(b.replayCacheSize()).append(" nonces cached")

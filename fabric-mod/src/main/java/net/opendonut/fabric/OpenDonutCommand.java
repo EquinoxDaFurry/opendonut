@@ -59,6 +59,7 @@ final class OpenDonutCommand {
 				.then(Commands.literal("region").executes(context -> region(context, backend)))
 				.then(Commands.literal("border").executes(context -> border(context, backend)))
 				.then(Commands.literal("players").executes(context -> players(context, backend)))
+				.then(Commands.literal("playerdata").executes(context -> playerData(context, backend)))
 				.then(Commands.literal("route")
 						.then(Commands.argument("x", IntegerArgumentType.integer())
 								.then(Commands.argument("z", IntegerArgumentType.integer())
@@ -151,6 +152,25 @@ final class OpenDonutCommand {
 			send(context, "  " + transfer.playerId() + " -> '" + transfer.targetServerId() + "' from global ("
 					+ transfer.globalX() + ", " + transfer.globalY() + ", " + transfer.globalZ() + ")");
 		}
+		return 1;
+	}
+
+	/**
+	 * Prints the player-data synchronisation state of this backend.
+	 *
+	 * @param context the command context
+	 * @param backend supplies the backend
+	 * @return 1 when the command ran
+	 */
+	private static int playerData(CommandContext<CommandSourceStack> context, Supplier<OpenDonutBackend> backend) {
+		OpenDonutBackend active = backend.get();
+		if (active == null) {
+			return reportInactive(context);
+		}
+		send(context, "player-data: " + active.config().playerData().describe());
+		send(context, "  this backend: "
+				+ (active.playerDataSync() == null ? "sync is not active"
+						: active.playerDataSync().describe()));
 		return 1;
 	}
 

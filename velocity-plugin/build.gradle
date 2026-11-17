@@ -28,6 +28,15 @@ dependencies {
 
 	implementation project(':common')
 
+	// The proxy is the only component that opens the player-data database, so the SQLite
+	// driver is bundled here and only here. It is deliberately NOT relocated: the driver's
+	// native library registers its JNI methods against the hard-coded class name
+	// org/sqlite/core/NativeDB, so relocating org.sqlite makes System.load fail at runtime
+	// with NoClassDefFoundError (observed live on 2026-11-17). Shading it unrelocated keeps
+	// the plugin a single jar; the collision risk with another plugin that also bundles
+	// sqlite-jdbc is accepted and documented in docs/installation.md.
+	implementation "org.xerial:sqlite-jdbc:${providers.gradleProperty('sqlite_jdbc_version').get()}"
+
 	testImplementation platform("org.junit:junit-bom:${junit_version}")
 	testImplementation 'org.junit.jupiter:junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -46,7 +55,8 @@ tasks.named('shadowJar') {
 	archiveBaseName = 'opendonut-velocity'
 	archiveClassifier = ''
 	// SnakeYAML is relocated so that a proxy running other plugins which bundle a different
-	// SnakeYAML version cannot break OpenDonut (or be broken by it).
+	// SnakeYAML version cannot break OpenDonut (or be broken by it). org.sqlite is NOT
+	// relocated — see the comment on the sqlite-jdbc dependency above.
 	relocate 'org.yaml.snakeyaml', 'net.opendonut.libs.snakeyaml'
 	mergeServiceFiles()
 	exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'

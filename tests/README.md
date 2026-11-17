@@ -1,8 +1,12 @@
 # Integration testing
 
-The unit test suite (`./gradlew test`, 216 tests) proves the configuration engine, the region lookup and the
-bridge protocol. It cannot prove that a player walking across a boundary arrives on the other server, because
-that needs a real client, a real proxy and two real Minecraft servers.
+The unit test suite (`./gradlew test`, 312 tests) proves the configuration engine, the region lookup, the
+bridge protocol, and the player-data sync machinery: the snapshot envelope codec, the store contract (lease,
+compare-and-set, history) run against both the in-memory and the SQLite stores including 16-thread races, the
+proxy-side coordinator's flush/lease/CAS sequencing, the five new bridge messages' round trips, the
+`player-data` config section, and the Fabric-side NBT strip/encode/decode against the real Minecraft classes.
+The suite cannot prove that a player walking across a boundary arrives on the other server with their items,
+because that needs a real client, a real proxy and two real Minecraft servers.
 
 This directory holds the procedure for that, the tooling to set it up, and the results that have actually been
 observed. **It is a manual procedure.** Nothing here is automated, and nothing here should be described as
@@ -114,6 +118,20 @@ Each item is something to observe, not something to assume.
 Items 4, 5, 8 and 9 are the ones that matter most: they are the routing decision, the transfer itself, the
 anti-oscillation margin, and the failure policy.
 
+### Checklist: player-data sync (needs `player-data.enabled: true` on all three processes)
+
+| # | Do this | Expect |
+|---|---|---|
+| 12 | Proxy startup with `player-data.enabled: true` | `player data sync ready — player-data coordinator: sqlite (...), ...` and `/opendonut playerdata` on the proxy prints the same line |
+| 13 | Backend startup with `player-data.enabled: true` | `player data sync ready on this backend — ...` on both backends, and `/opendonut playerdata` on a backend prints the counters |
+| 14 | Give the player items/armour/off-hand, eat, take damage, gain XP, apply an effect, then walk east past `x = 0` | `west` logs a save for the flush (`sent the data of ... (N bytes, base revision R, flush requested by the proxy ...)`), the proxy logs `stored the data of ... as revision R+1` then `lease for ... moved from 'west' to 'east'`, `east` logs `applied the stored data of ...` |
+| 15 | On `east`, check the inventory, armour, off-hand, ender chest, health, hunger, XP level/progress, held slot and effects | All identical to what they were on `west`; no stack duplicated, none lost |
+| 16 | Walk back west past `x = -1` | The mirror image: a save on `east`, the lease moving back to `west`, `west` applying the stored data |
+| 17 | Re-check everything on `west` | Still identical |
+| 18 | Disconnect entirely, reconnect through the proxy | The backend that receives the player applies the stored snapshot on join (the store, not the backend's local `world/players/<uuid>.dat`, is authoritative) |
+| 19 | Stop `east` while the player is on it, then cross back | The lease expires after `lease-seconds` and `west` takes over (`taken over from 'east', whose lease expired` in the proxy log) — no permanent lockout |
+| 20 | With `east` stopped, walk into its region from `west` | The proxy refuses the transfer (`could not move ... SERVER_DISCONNECTED`); with `player-data` on, the flush either commits first and the refusal is clean, or the flush times out and the transfer is refused — in both cases `west` keeps the player's exact state, nothing is duplicated |
+
 ### What a boundary crossing should look like
 
 Backend `west`:
@@ -165,6 +183,9 @@ in [`results/`](results).
 | **A player walking across the boundary, after the framing fix** | **Partially verified, one blocker found.** `west` verified itself and the routing decision ran — the frames were parsed, so the framing fix worked. But the transfer was then refused with *"backend 'east' has not verified itself ... so it may not receive players"*, while `east` was running perfectly. See the next row. |
 | **The first transfer to a backend that has never had a player** | **Failed, diagnosed and fixed.** A backend announces itself only through a player's connection, so requiring a verified `HELLO` before allowing a transfer deadlocked the first transfer to *every* backend. The proxy now has three admission states: verified → place immediately; unknown → admit provisionally and verify during the arrival (returning the player if it fails); announced-and-mismatched → refuse. Five tests cover the three states and the bootstrap rule. |
 | Velocity booting from the workspace path | **Fail, diagnosed.** `ProviderNotFoundException: Provider "jar" not found`; the cause is a path containing both a space and `!`. Works from a plain path. See [troubleshooting.md](../docs/troubleshooting.md#velocity-fails-to-start-with-providernotfoundexception-provider-jar-not-found) |
+| **Player-data sync, unit level** (2026-11-17) | **Pass, at the unit level only.** 312 tests green, including: the snapshot envelope codec (round trips, zip-bomb and lying-length refusal), the store contract against both the in-memory and SQLite stores (CAS saves, lease grant/refuse/renew/release/steal-after-expiry, bounded history, 16-thread races with exactly one winner), the coordinator's flush/lease/CAS sequencing, round trips for the five new bridge messages plus refusal of a >64 KiB frame and of a validly signed frame with a lying inner length, the `player-data` config section (defaults off, every key, unimplemented options rejected loudly), and the Fabric NBT strip/encode/decode against the real 26.3 classes. |
+| **Player-data sync, live startup on the three-process stack** (2026-11-17, logs `results/2026-11-17-playerdata-phase1c-*.log`) | **Pass for startup.** All three processes boot with `player-data.enabled: true`: the proxy logs `player data sync ready — player-data coordinator: sqlite (playerdata.db) ...` and creates `plugins/opendonut/playerdata.db` with the `player_data` / `player_lease` / `player_data_history` tables (schema verified by opening the live file); both backends log `player data sync ready on this backend ... data version 5023, mod fingerprint edaa0b8a1366c4bb`. Two live bugs were found and fixed this way: the driver was invisible to the plugin class loader (`No suitable driver found` — fixed by loading the driver through the store's own class loader), and relocating `org.sqlite` broke the native library (`NoClassDefFoundError: org/sqlite/core/NativeDB` — fixed by shading the driver unrelocated; see docs/installation.md). |
+| **Player-data sync, in-game transfer** (checklist 12–20) | **Not yet run.** No client has crossed the boundary with sync on. The bridge path is only exercised through a player connection, so this needs a human with a client: connect to `127.0.0.1:25565`, give yourself items/armour/XP, walk past `x = 0`, and watch the three logs for the flush → save → lease-move → apply sequence, then check the inventory/health/XP arrived intact, and walk back. |
 
 ### Honest summary
 
@@ -174,7 +195,9 @@ correctly — including the failure paths, which were observed rather than reaso
 
 The transfer path itself (checklist items 5-11) has **not** been exercised with a client. The code is written
 against the real APIs and reviewed, and the failure modes are handled and logged, but until somebody walks
-across a boundary on a real client, treat it as untested. That is the first thing to do next.
+across a boundary on a real client, treat it as untested. That is the first thing to do next. The same is true
+for the player-data checklist (items 12-20): startup on all three processes is verified (see the table above),
+but no player has crossed a boundary with sync enabled yet.
 
 ## Leftovers in this workspace
 

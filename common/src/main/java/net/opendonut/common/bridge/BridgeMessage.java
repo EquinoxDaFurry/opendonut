@@ -1,5 +1,6 @@
 package net.opendonut.common.bridge;
 
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,7 +33,9 @@ import net.opendonut.common.model.RegionBounds;
  */
 public sealed interface BridgeMessage
 		permits BridgeMessage.Hello, BridgeMessage.HelloAck, BridgeMessage.TransferRequest,
-		BridgeMessage.TransferResult, BridgeMessage.PlacePlayer {
+		BridgeMessage.TransferResult, BridgeMessage.PlacePlayer, BridgeMessage.PlayerDataLoadRequest,
+		BridgeMessage.PlayerDataLoadResponse, BridgeMessage.PlayerDataSaveRequest,
+		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest {
 
 	/**
 	 * The wire type of this message.
@@ -256,6 +259,228 @@ public sealed interface BridgeMessage
 		/** @return the coordinates as a compact log fragment */
 		public String position() {
 			return globalX + "," + globalY + "," + globalZ;
+		}
+	}
+
+	/**
+	 * Backend to proxy: "Player X has joined me; send me their stored data."
+	 *
+	 * <p>Sent from the backend's player-join handling, which is the first moment the backend can receive a
+	 * plugin message about that player. The proxy only answers when the asking backend holds — or takes
+	 * over — the player's lease, so the answer doubles as the lease acquisition.
+	 *
+	 * @param playerId the player who just joined
+	 * @param serverId the asking backend's id, which the proxy checks against the connection it arrived on
+	 */
+	record PlayerDataLoadRequest(
+			UUID playerId,
+			String serverId) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlayerDataLoadRequest {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(serverId, "serverId");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLAYER_DATA_LOAD_REQUEST;
+		}
+	}
+
+	/**
+	 * Proxy to backend: the stored data for a player, or the fact that nothing is stored.
+	 *
+	 * @param playerId the player
+	 * @param present whether a snapshot exists; {@code false} means "this player has never been stored,
+	 *                keep what your local player file says"
+	 * @param revision the revision the snapshot was stored as, which the backend quotes as the base of its
+	 *                 next save; {@code 0} when nothing is stored
+	 * @param envelope the snapshot, encoded by {@code SnapshotCodec}; empty when {@code present} is false.
+	 *                 Carried as bytes rather than as fields so the store and the wire use one encoding
+	 * @param detail an explanation for the log, always present
+	 */
+	record PlayerDataLoadResponse(
+			UUID playerId,
+			boolean present,
+			long revision,
+			byte[] envelope,
+			String detail) implements BridgeMessage {
+
+		/**
+		 * Validates the record and copies the payload.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlayerDataLoadResponse {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(envelope, "envelope");
+			Objects.requireNonNull(detail, "detail");
+			envelope = envelope.clone();
+		}
+
+		@Override
+		public byte[] envelope() {
+			return envelope.clone();
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLAYER_DATA_LOAD_RESPONSE;
+		}
+
+		// Records compare arrays by reference by default; a message is a value, so compare the payload bytes.
+		@Override
+		public boolean equals(Object other) {
+			return other instanceof PlayerDataLoadResponse response
+					&& playerId.equals(response.playerId)
+					&& present == response.present
+					&& revision == response.revision
+					&& Arrays.equals(envelope, response.envelope)
+					&& detail.equals(response.detail);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(playerId, present, revision, Arrays.hashCode(envelope), detail);
+		}
+
+		@Override
+		public String toString() {
+			return "PlayerDataLoadResponse[playerId=" + playerId + ", present=" + present + ", revision="
+					+ revision + ", envelope=" + envelope.length + " bytes, detail=" + detail + "]";
+		}
+	}
+
+	/**
+	 * Backend to proxy: "Store this snapshot of player X; I based it on revision R."
+	 *
+	 * <p>The base revision is the compare-and-set token: the proxy applies the snapshot only if the store
+	 * still holds {@code baseRevision}, which is what stops a slow backend from overwriting a newer
+	 * snapshot with an older one.
+	 *
+	 * @param playerId the player
+	 * @param serverId the writing backend's id; the proxy refuses the write when the lease is held by
+	 *                 somebody else
+	 * @param baseRevision the revision the writer read last (0 when the player has never been stored)
+	 * @param envelope the snapshot, encoded by {@code SnapshotCodec}
+	 */
+	record PlayerDataSaveRequest(
+			UUID playerId,
+			String serverId,
+			long baseRevision,
+			byte[] envelope) implements BridgeMessage {
+
+		/**
+		 * Validates the record and copies the payload.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlayerDataSaveRequest {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(serverId, "serverId");
+			Objects.requireNonNull(envelope, "envelope");
+			envelope = envelope.clone();
+		}
+
+		@Override
+		public byte[] envelope() {
+			return envelope.clone();
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLAYER_DATA_SAVE_REQUEST;
+		}
+
+		// Records compare arrays by reference by default; a message is a value, so compare the payload bytes.
+		@Override
+		public boolean equals(Object other) {
+			return other instanceof PlayerDataSaveRequest request
+					&& playerId.equals(request.playerId)
+					&& serverId.equals(request.serverId)
+					&& baseRevision == request.baseRevision
+					&& Arrays.equals(envelope, request.envelope);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(playerId, serverId, baseRevision, Arrays.hashCode(envelope));
+		}
+
+		@Override
+		public String toString() {
+			return "PlayerDataSaveRequest[playerId=" + playerId + ", serverId=" + serverId + ", baseRevision="
+					+ baseRevision + ", envelope=" + envelope.length + " bytes]";
+		}
+	}
+
+	/**
+	 * Proxy to backend: the outcome of a {@link PlayerDataSaveRequest}.
+	 *
+	 * @param playerId the player
+	 * @param accepted whether the snapshot was stored
+	 * @param revision the revision the store holds after the attempt: the new revision when accepted, the
+	 *                 current one when refused
+	 * @param detail why, phrased for the backend's log
+	 */
+	record PlayerDataSaveResult(
+			UUID playerId,
+			boolean accepted,
+			long revision,
+			String detail) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlayerDataSaveResult {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(detail, "detail");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLAYER_DATA_SAVE_RESULT;
+		}
+	}
+
+	/**
+	 * Proxy to backend: "Save player X's data now; they are about to be moved to another server."
+	 *
+	 * <p>The proxy sequences this before the connection request, so that the snapshot is committed in the
+	 * store before the destination can read it. A backend that cannot answer in time causes the transfer to
+	 * be refused (unless {@code player-data.on-flush-failure} says otherwise), because a player is never
+	 * moved away from their own items.
+	 *
+	 * @param playerId the player being moved
+	 * @param fromServerId the server the player is leaving, which must match the receiving backend
+	 * @param toServerId the destination, for the log
+	 */
+	record PlayerDataFlushRequest(
+			UUID playerId,
+			String fromServerId,
+			String toServerId) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public PlayerDataFlushRequest {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(fromServerId, "fromServerId");
+			Objects.requireNonNull(toServerId, "toServerId");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.PLAYER_DATA_FLUSH_REQUEST;
 		}
 	}
 }

@@ -67,6 +67,27 @@ final class BackendBridge {
 		 * @param result the outcome
 		 */
 		void onTransferResult(BridgeMessage.TransferResult result);
+
+		/**
+		 * The proxy answered a player-data load request.
+		 *
+		 * @param response the response
+		 */
+		void onPlayerDataLoadResponse(BridgeMessage.PlayerDataLoadResponse response);
+
+		/**
+		 * The proxy reported the outcome of a player-data save.
+		 *
+		 * @param result the outcome
+		 */
+		void onPlayerDataSaveResult(BridgeMessage.PlayerDataSaveResult result);
+
+		/**
+		 * The proxy demands a save of a player's data before moving them.
+		 *
+		 * @param request the flush request
+		 */
+		void onPlayerDataFlushRequest(BridgeMessage.PlayerDataFlushRequest request);
 	}
 
 	private final byte[] secret;
@@ -172,12 +193,21 @@ final class BackendBridge {
 			case BridgeMessage.HelloAck ack -> listener.onHelloAck(ack);
 			case BridgeMessage.PlacePlayer placement -> listener.onPlacePlayer(placement);
 			case BridgeMessage.TransferResult transferResult -> listener.onTransferResult(transferResult);
+			case BridgeMessage.PlayerDataLoadResponse response -> listener.onPlayerDataLoadResponse(response);
+			case BridgeMessage.PlayerDataSaveResult result -> listener.onPlayerDataSaveResult(result);
+			case BridgeMessage.PlayerDataFlushRequest request -> listener.onPlayerDataFlushRequest(request);
 			case BridgeMessage.Hello ignored -> logger.warn(
 					"OpenDonut: the proxy sent a HELLO to a backend; that message only travels the other way. "
 							+ "Ignoring it.");
 			case BridgeMessage.TransferRequest ignored -> logger.warn(
 					"OpenDonut: the proxy sent a TRANSFER_REQUEST to a backend; only backends send requests. "
 							+ "Ignoring it.");
+			case BridgeMessage.PlayerDataLoadRequest ignored -> logger.warn(
+					"OpenDonut: the proxy sent a PLAYER_DATA_LOAD_REQUEST to a backend; only backends ask for "
+							+ "data. Ignoring it.");
+			case BridgeMessage.PlayerDataSaveRequest ignored -> logger.warn(
+					"OpenDonut: the proxy sent a PLAYER_DATA_SAVE_REQUEST to a backend; only backends save "
+							+ "data. Ignoring it.");
 		}
 	}
 

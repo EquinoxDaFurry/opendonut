@@ -32,6 +32,11 @@ dependencies {
 	testImplementation platform("org.junit:junit-bom:${providers.gradleProperty('junit_version').get()}")
 	testImplementation 'org.junit.jupiter:junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// The SQL store is exercised by the tests. At runtime only the Velocity plugin
+	// loads the class, and it bundles the driver itself (see velocity-plugin/build.gradle);
+	// the Fabric mod never touches it, so the driver is deliberately not an `api` dependency.
+	testImplementation "org.xerial:sqlite-jdbc:${providers.gradleProperty('sqlite_jdbc_version').get()}"
 }
 
 tasks.named('test') {
