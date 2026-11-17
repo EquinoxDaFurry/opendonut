@@ -428,6 +428,19 @@ public final class BridgeCodec {
 					out.writeUTF(request.fromServerId());
 					out.writeUTF(request.toServerId());
 				}
+				case BridgeMessage.TimeReport report -> {
+					out.writeUTF(report.clock());
+					out.writeLong(report.totalTicks());
+					out.writeFloat(report.rate());
+					out.writeBoolean(report.paused());
+				}
+				case BridgeMessage.TimeSet set -> {
+					out.writeUTF(set.clock());
+					out.writeLong(set.totalTicks());
+					out.writeFloat(set.rate());
+					out.writeBoolean(set.paused());
+					out.writeUTF(set.reason());
+				}
 			}
 			out.flush();
 			return buffer.toByteArray();
@@ -470,6 +483,10 @@ public final class BridgeCodec {
 					readUuid(in), in.readBoolean(), in.readLong(), in.readUTF());
 			case PLAYER_DATA_FLUSH_REQUEST -> new BridgeMessage.PlayerDataFlushRequest(
 					readUuid(in), in.readUTF(), in.readUTF());
+			case TIME_REPORT -> new BridgeMessage.TimeReport(
+					in.readUTF(), in.readLong(), in.readFloat(), in.readBoolean());
+			case TIME_SET -> new BridgeMessage.TimeSet(
+					in.readUTF(), in.readLong(), in.readFloat(), in.readBoolean(), in.readUTF());
 		};
 	}
 

@@ -21,6 +21,7 @@ import net.opendonut.common.model.RegionBounds;
 import net.opendonut.common.model.SeedSpec;
 import net.opendonut.common.model.ServerAddress;
 import net.opendonut.common.model.ServerDefinition;
+import net.opendonut.common.model.TimeSettings;
 import net.opendonut.common.model.TransferFailurePolicy;
 import net.opendonut.common.model.TransferSettings;
 import net.opendonut.common.model.UnassignedAreaPolicy;
@@ -52,7 +53,7 @@ final class ConfigParser {
 
 	private static final Set<String> ROOT_KEYS = Set.of(
 			"config-version", "world", "servers", "validation", "bridge", "proxy", "transfer", "backend",
-			"border-particles", "player-data");
+			"border-particles", "player-data", "time");
 	private static final Set<String> WORLD_KEYS = Set.of("name", "seed", "border");
 	private static final Set<String> BORDER_KEYS = Set.of("center-x", "center-z", "size");
 	private static final Set<String> SERVER_KEYS = Set.of("id", "address", "bounds");
@@ -73,6 +74,9 @@ final class ConfigParser {
 	private static final Set<String> PLAYER_DATA_KEYS = Set.of(
 			"enabled", "storage", "file", "sync-interval-seconds", "lease-seconds", "on-flush-failure",
 			"scope", "keep-history", "max-payload-bytes", "flush-timeout-seconds");
+	private static final Set<String> TIME_KEYS = Set.of(
+			"enabled", "authority", "clock", "report-interval-seconds", "sync-interval-seconds",
+			"log-divergence-ticks");
 
 	private final ValidationResult.Collector issues;
 	private final YamlAccess yaml;
@@ -116,6 +120,7 @@ final class ConfigParser {
 		BorderParticleSettings borderParticles =
 				parseBorderParticles(rootEntries.get("border-particles"), policy);
 		PlayerDataSettings playerData = parsePlayerData(rootEntries.get("player-data"), policy);
+		TimeSettings time = parseTime(rootEntries.get("time"), policy);
 
 		yaml.reportUnknownKeys(rootEntries, "", ROOT_KEYS, policy);
 
@@ -127,7 +132,7 @@ final class ConfigParser {
 
 		return Optional.of(new OpenDonutConfig(
 				sourceName, world, servers, validation, bridge, proxy, transfer, backend, borderParticles,
-				playerData));
+				playerData, time));
 	}
 
 	/**
@@ -505,6 +510,46 @@ final class ConfigParser {
 					scope, keepHistory, maxPayloadBytes, flushTimeout);
 		} catch (IllegalArgumentException e) {
 			yaml.report(IssueCode.INVALID_VALUE, "player-data", YamlAccess.lineOf(mapping), e.getMessage());
+			return settings;
+		}
+	}
+
+	/**
+	 * Parses the {@code time} section.
+	 *
+	 * <p>Like {@code player-data}, every key is optional and the whole section defaults to disabled: world-clock
+	 * synchronisation is opt-in, so a network that upgrades to a build that has it keeps behaving exactly as it
+	 * did until an administrator turns it on. The {@code authority} value is checked against the server list by
+	 * the semantic validator, because the parser cannot know the ids yet.
+	 *
+	 * @param node the section node, may be {@code null}
+	 * @param policy what to do with unrecognised keys
+	 * @return the settings
+	 */
+	private TimeSettings parseTime(Node node, UnknownFieldPolicy policy) {
+		MappingNode mapping = yaml.asMapping(node, "time", false);
+		TimeSettings settings = TimeSettings.DEFAULT;
+		if (mapping == null) {
+			return settings;
+		}
+		sourceMap.put("time", YamlAccess.lineOf(node));
+		Map<String, Node> entries = yaml.entries(mapping, "time");
+
+		Boolean enabled = yaml.readBoolean(entries, "enabled", "time", settings.enabled());
+		String authority = yaml.readString(entries, "authority", "time", settings.authority(), false);
+		String clock = yaml.readString(entries, "clock", "time", settings.clock(), false);
+		Integer reportInterval = yaml.readInt(entries, "report-interval-seconds", "time",
+				settings.reportIntervalSeconds(), false);
+		Integer syncInterval = yaml.readInt(entries, "sync-interval-seconds", "time",
+				settings.syncIntervalSeconds(), false);
+		Integer divergenceTicks = yaml.readInt(entries, "log-divergence-ticks", "time",
+				settings.logDivergenceTicks(), false);
+		yaml.reportUnknownKeys(entries, "time", TIME_KEYS, policy);
+
+		try {
+			return new TimeSettings(enabled, authority, clock, reportInterval, syncInterval, divergenceTicks);
+		} catch (IllegalArgumentException e) {
+			yaml.report(IssueCode.INVALID_VALUE, "time", YamlAccess.lineOf(mapping), e.getMessage());
 			return settings;
 		}
 	}

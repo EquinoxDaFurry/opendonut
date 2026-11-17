@@ -72,6 +72,7 @@ public final class ConfigValidator {
 		validateServers(config, options);
 		validateCoverage(config, options);
 		validateIdentity(config);
+		validateTime(config);
 		validateAdvisories(config);
 		return issues;
 	}
@@ -303,6 +304,37 @@ public final class ConfigValidator {
 					"backend.server-id is '" + wanted + "' but no server has that id; known ids: "
 							+ (known.isEmpty() ? "(none configured)" : String.join(", ", known)));
 		}
+	}
+
+	/**
+	 * Validates the {@code time} section against the server list.
+	 *
+	 * <p>An explicit {@code time.authority} must name a configured server: a typo there would silently leave the
+	 * network without an authority, and every backend's clock would stay its own. {@code auto} needs no check —
+	 * it resolves to the first backend the proxy verifies.
+	 *
+	 * @param config the configuration to check
+	 */
+	private void validateTime(OpenDonutConfig config) {
+		net.opendonut.common.model.TimeSettings time = config.time();
+		if (!time.enabled() || time.authorityIsAuto()) {
+			return;
+		}
+		String wanted = time.explicitAuthority();
+		if (config.server(wanted).isEmpty()) {
+			List<String> known = new ArrayList<>();
+			for (ServerDefinition server : config.servers()) {
+				known.add("'" + server.id() + "'");
+			}
+			issues.add(IssueCode.TIME_AUTHORITY_UNKNOWN, "time.authority", sourceMap.line("time"),
+					"time.authority is '" + wanted + "' but no server has that id; known ids: "
+							+ (known.isEmpty() ? "(none configured)" : String.join(", ", known))
+							+ ". Use '" + net.opendonut.common.model.TimeSettings.AUTHORITY_AUTO
+							+ "' to let the proxy pick the first verified backend.");
+			return;
+		}
+		issues.add(IssueCode.DERIVED_VALUE, "time", sourceMap.line("time"),
+				"world time sync: " + time.describe() + "; the authority is '" + wanted + "'");
 	}
 
 	private void validateAdvisories(OpenDonutConfig config) {

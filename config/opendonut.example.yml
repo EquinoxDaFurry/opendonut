@@ -277,6 +277,45 @@ border-particles:
 #   flush-timeout-seconds: 10
 
 # -----------------------------------------------------------------------------
+#  World time synchronisation (optional, OFF by default)
+# -----------------------------------------------------------------------------
+# Each backend runs its own world clock, so /time set on one server, or a
+# server that was down while the others played, leaves the clocks different
+# and the sun in a different place on each side of a boundary. With this
+# section on, one backend is the time authority; it reports its clock to the
+# proxy, and the proxy pushes the current time to every other backend when it
+# announces itself, when a player arrives on it, and periodically. Run /time
+# on the authority if you want the whole network to change.
+#
+# This section is OFF by default. The proxy and every backend must have the
+# same section, and the bridge must be enabled (it is by default).
+#
+# time:
+#   # Master switch. false = every backend keeps its own clock.
+#   enabled: false
+#
+#   # Which backend is the authority: 'auto' (the first backend the proxy
+#   # verifies) or a server id, e.g. west.
+#   authority: auto
+#
+#   # Which world clock to synchronise, by registry id. Vanilla provides
+#   # minecraft:overworld (also the nether's clock) and minecraft:the_end.
+#   clock: minecraft:overworld
+#
+#   # How often a backend reports its clock to the proxy, in seconds. Must be
+#   # at least 1. A backend with no players online cannot report; the proxy
+#   # advances the last reading by wall clock in the meantime.
+#   report-interval-seconds: 5
+#
+#   # How often the proxy pushes the current time to every non-authority
+#   # backend, in seconds. 0 = only on backend registration and player arrival.
+#   sync-interval-seconds: 30
+#
+#   # A correction that moves a backend's clock by more than this many ticks is
+#   # logged at warning level. 0 logs every correction.
+#   log-divergence-ticks: 20
+
+# -----------------------------------------------------------------------------
 #  This instance (backends only; the proxy ignores it)
 # -----------------------------------------------------------------------------
 # A backend usually works out which entry below is its own by comparing its

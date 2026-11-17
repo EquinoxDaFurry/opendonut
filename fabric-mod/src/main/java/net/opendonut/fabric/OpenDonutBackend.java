@@ -85,6 +85,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	private MinecraftServer server;
 	private BackendBridge bridge;
 	private PlayerDataSync playerDataSync;
+	private WorldTimeSync worldTimeSync;
 	private Optional<BorderParticles> borderParticles = Optional.empty();
 	private Path configPath;
 	private Path configDirectory;
@@ -176,6 +177,7 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		backend.setUpBridge(server, configDirectory, configPath);
 		backend.playerDataSync = PlayerDataSync.create(server, config, backend.bridge, identity.get().id(), logger)
 				.orElse(null);
+		backend.worldTimeSync = WorldTimeSync.create(server, config, backend.bridge, logger).orElse(null);
 		backend.borderParticles = BorderParticles.create(config.borderParticles(), logger);
 		// The full "who am I and where am I" summary is logged by completeStartup, once the world is known.
 		return Optional.of(backend);
@@ -549,6 +551,12 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 			playerDataSync.tick(server);
 		}
 
+		// Time reporting needs only the bridge, not transfers: a backend whose transfers are off still keeps
+		// its clock in step with the authority.
+		if (worldTimeSync != null) {
+			worldTimeSync.tick(server);
+		}
+
 		if (bridge == null || !transfersEnabled) {
 			return;
 		}
@@ -860,6 +868,9 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		}
 		logger.info("OpenDonut: the proxy accepted this backend as '{}' (seed {}, {} transfer(s) in flight)",
 				ack.serverId(), ack.resolvedSeed(), tracker.pendingCount());
+		if (worldTimeSync != null) {
+			worldTimeSync.onHelloAck();
+		}
 	}
 
 	@Override
@@ -937,6 +948,13 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		}
 	}
 
+	@Override
+	public void onTimeSet(BridgeMessage.TimeSet set) {
+		if (worldTimeSync != null) {
+			worldTimeSync.onTimeSet(set);
+		}
+	}
+
 	/** @return the configuration this backend is running on */
 	public OpenDonutConfig config() {
 		return config;
@@ -982,6 +1000,11 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		return borderParticles
 				.map(particles -> particles.describeFor(player, self.bounds()))
 				.orElse("border particles are disabled (border-particles.enabled: false)");
+	}
+
+	/** @return the world-time synchroniser, or {@code null} when time sync is off */
+	WorldTimeSync worldTimeSync() {
+		return worldTimeSync;
 	}
 
 	/** @return the bridge, or empty when it could not be created */
@@ -1031,6 +1054,9 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		out.append("  player data : ")
 				.append(playerDataSync == null ? "disabled (player-data.enabled: false)"
 						: playerDataSync.describe())
+				.append(System.lineSeparator());
+		out.append("  world time  : ")
+				.append(worldTimeSync == null ? "disabled (time.enabled: false)" : worldTimeSync.describe())
 				.append(System.lineSeparator());
 		bridge().ifPresent(b -> out.append("  bridge      : ").append(b.sentFrames()).append(" sent, ")
 				.append(b.receivedFrames()).append(" received, ").append(b.rejectedFrames())

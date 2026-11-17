@@ -21,7 +21,11 @@ tests/
 
 ## What the test environment is
 
-Three Java processes, all on the local machine:
+Three Java processes, all on the local machine. **The live stack runs from
+`%LOCALAPPDATA%\OpenDonut`** (`Server1`, `Server2`, `velocity`, plus a `start.bat` that launches all three
+with `C:\Java\jdk26`); the `Server1`/`Server2` directories in the workspace root are an earlier copy of the
+same servers and are no longer used for live runs — install jars and config changes into the
+`%LOCALAPPDATA%` tree, not the workspace one:
 
 | Process | Address | Software |
 |---|---|---|
@@ -132,6 +136,18 @@ anti-oscillation margin, and the failure policy.
 | 19 | Stop `east` while the player is on it, then cross back | The lease expires after `lease-seconds` and `west` takes over (`taken over from 'east', whose lease expired` in the proxy log) — no permanent lockout |
 | 20 | With `east` stopped, walk into its region from `west` | The proxy refuses the transfer (`could not move ... SERVER_DISCONNECTED`); with `player-data` on, the flush either commits first and the refusal is clean, or the flush times out and the transfer is refused — in both cases `west` keeps the player's exact state, nothing is duplicated |
 
+### Checklist: world-time sync (needs `time.enabled: true` on all three processes)
+
+| # | Do this | Expect |
+|---|---|---|
+| 21 | Proxy startup with `time.enabled: true` | `world time sync ready — time sync: authority (not resolved yet), ...` and, once a backend verifies, `authority 'west'` (or the configured id) |
+| 22 | Backend startup with `time.enabled: true` | `world time sync ready on this backend — ...` on both backends |
+| 23 | On `west` (the authority), run `/time set 18000`; wait ~35 s with no players crossing | The proxy logs an accepted `time report from 'west'`, and `east` logs `applied the proxy's time correction: set clock minecraft:overworld to ... because of 'periodic'`; `/time query daytime` on `east` matches `west` |
+| 24 | Run `/time set 6000` on `east` only | Within one `sync-interval-seconds` it is corrected back to the authority's time (watch for the warning-level `applied the proxy's time correction` with a large delta) |
+| 25 | Walk east past `x = 0` with the time deliberately different on the two sides | The proxy sends `TIME_SET ... transfer` right after `PLACE_PLAYER`; `east` logs the correction with reason `'transfer'`; the arriving player sees the authority's time (`/time query daytime` on `east`) |
+| 26 | Restart `east` while nobody is on it, then connect a player to it | On the first join `east` verifies (`HELLO`), the proxy pushes `TIME_SET ... hello`, and `east`'s log shows the correction to the authority's current time |
+| 27 | With `time.enabled: true` but the authority stopped, transfer a player | No crash and no refusal: the proxy's wall-clock estimate stands in (the logs show no new `time report from ...`), and the destination is set from the estimate |
+
 ### What a boundary crossing should look like
 
 Backend `west`:
@@ -186,6 +202,9 @@ in [`results/`](results).
 | **Player-data sync, unit level** (2026-11-17) | **Pass, at the unit level only.** 312 tests green, including: the snapshot envelope codec (round trips, zip-bomb and lying-length refusal), the store contract against both the in-memory and SQLite stores (CAS saves, lease grant/refuse/renew/release/steal-after-expiry, bounded history, 16-thread races with exactly one winner), the coordinator's flush/lease/CAS sequencing, round trips for the five new bridge messages plus refusal of a >64 KiB frame and of a validly signed frame with a lying inner length, the `player-data` config section (defaults off, every key, unimplemented options rejected loudly), and the Fabric NBT strip/encode/decode against the real 26.3 classes. |
 | **Player-data sync, live startup on the three-process stack** (2026-11-17, logs `results/2026-11-17-playerdata-phase1c-*.log`) | **Pass for startup.** All three processes boot with `player-data.enabled: true`: the proxy logs `player data sync ready — player-data coordinator: sqlite (playerdata.db) ...` and creates `plugins/opendonut/playerdata.db` with the `player_data` / `player_lease` / `player_data_history` tables (schema verified by opening the live file); both backends log `player data sync ready on this backend ... data version 5023, mod fingerprint edaa0b8a1366c4bb`. Two live bugs were found and fixed this way: the driver was invisible to the plugin class loader (`No suitable driver found` — fixed by loading the driver through the store's own class loader), and relocating `org.sqlite` broke the native library (`NoClassDefFoundError: org/sqlite/core/NativeDB` — fixed by shading the driver unrelocated; see docs/installation.md). |
 | **Player-data sync, in-game transfer** (checklist 12–20) | **Not yet run.** No client has crossed the boundary with sync on. The bridge path is only exercised through a player connection, so this needs a human with a client: connect to `127.0.0.1:25565`, give yourself items/armour/XP, walk past `x = 0`, and watch the three logs for the flush → save → lease-move → apply sequence, then check the inventory/health/XP arrived intact, and walk back. |
+| **First live attempt at a sync transfer, 2026-11-17 17:30** | **Failed, diagnosed.** The proxy (new plugin) sent `PLAYER_DATA_FLUSH_REQUEST` (type 10) but the running backend answered `UNKNOWN_MESSAGE_TYPE`, then the flush timed out and the transfer was refused (`the source did not save the player's data within 10 second(s)`). Cause: the *live* backends under `%LOCALAPPDATA%\OpenDonut` were still running the pre-Phase-1 jar in memory (jars are not reloaded) and their configs had no `player-data` section. Fixed by installing the new mod jar into both live backends, enabling `player-data` in both live configs (backups kept), and restarting all three from `%LOCALAPPDATA%\OpenDonut` — all three now log `player data sync ready` (logs `results/2026-11-17-playerdata-live-*.log`). |
+| **World-time sync, unit level** (2026-11-17) | **Pass.** `TimeSyncCoordinatorTest` (auto/explicit authority resolution, only-the-authority reports trusted with warn-once, wrong-clock refusal, wall-clock estimate at 20 tps, rate and pause, snap-to-later-report even backwards, negative-elapsed clamp), `TimeSettingsTest` (defaults, normalisation, every range check), `TIME_REPORT`/`TIME_SET` codec round-trips in `BridgeCodecTest`, and the `time:` section in `ConfigLoaderTest` (defaults off, every key, unknown authority → `TIME_AUTHORITY_UNKNOWN` error, bad clock id, interval ranges, `sync-interval-seconds: 0` legal, unknown key policy). |
+| **World-time sync, live startup** (checklist 21–22) | **Not yet run.** The `time:` section must be added to all three live configs under `%LOCALAPPDATA%\OpenDonut` and the stack restarted; then expect `world time sync ready` on all three and `time report from ...` on the proxy once a player connects. |
 
 ### Honest summary
 

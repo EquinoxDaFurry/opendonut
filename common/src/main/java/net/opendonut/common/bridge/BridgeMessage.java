@@ -35,7 +35,8 @@ public sealed interface BridgeMessage
 		permits BridgeMessage.Hello, BridgeMessage.HelloAck, BridgeMessage.TransferRequest,
 		BridgeMessage.TransferResult, BridgeMessage.PlacePlayer, BridgeMessage.PlayerDataLoadRequest,
 		BridgeMessage.PlayerDataLoadResponse, BridgeMessage.PlayerDataSaveRequest,
-		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest {
+		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest,
+		BridgeMessage.TimeReport, BridgeMessage.TimeSet {
 
 	/**
 	 * The wire type of this message.
@@ -481,6 +482,72 @@ public sealed interface BridgeMessage
 		@Override
 		public MessageType type() {
 			return MessageType.PLAYER_DATA_FLUSH_REQUEST;
+		}
+	}
+
+	/**
+	 * Backend to proxy: a reading of a world clock.
+	 *
+	 * <p>Every backend with time sync enabled sends this periodically; the proxy accepts only the reading of
+	 * the configured authority. The clock is named by its registry id (for example {@code minecraft:overworld})
+	 * so that datapack-defined clocks work too, not just the two vanilla ones.
+	 *
+	 * @param clock the registry id of the world clock, for example {@code minecraft:overworld}
+	 * @param totalTicks the clock's {@code totalTicks()} at the moment of the report
+	 * @param rate the clock's rate, carried for forward compatibility; Phase 1 does not apply it
+	 * @param paused whether the clock is paused, carried for forward compatibility; Phase 1 does not apply it
+	 */
+	record TimeReport(
+			String clock,
+			long totalTicks,
+			float rate,
+			boolean paused) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public TimeReport {
+			Objects.requireNonNull(clock, "clock");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.TIME_REPORT;
+		}
+	}
+
+	/**
+	 * Proxy to backend: set a world clock to a reading.
+	 *
+	 * @param clock the registry id of the world clock
+	 * @param totalTicks the {@code totalTicks} to set
+	 * @param rate the clock's rate, carried for forward compatibility; Phase 1 does not apply it
+	 * @param paused whether the clock is paused, carried for forward compatibility; Phase 1 does not apply it
+	 * @param reason why the proxy sent this, for the backend's log: {@code hello}, {@code transfer} or
+	 *             {@code periodic}
+	 */
+	record TimeSet(
+			String clock,
+			long totalTicks,
+			float rate,
+			boolean paused,
+			String reason) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public TimeSet {
+			Objects.requireNonNull(clock, "clock");
+			Objects.requireNonNull(reason, "reason");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.TIME_SET;
 		}
 	}
 }

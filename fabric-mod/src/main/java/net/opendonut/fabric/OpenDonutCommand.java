@@ -171,6 +171,9 @@ final class OpenDonutCommand {
 		send(context, "  this backend: "
 				+ (active.playerDataSync() == null ? "sync is not active"
 						: active.playerDataSync().describe()));
+		send(context, "time: " + active.config().time().describe());
+		send(context, "  this backend: "
+				+ (active.worldTimeSync() == null ? "sync is not active" : active.worldTimeSync().describe()));
 		return 1;
 	}
 

@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +31,7 @@ import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerInfo;
+import com.velocitypowered.api.scheduler.ScheduledTask;
 
 import org.slf4j.Logger;
 
@@ -47,9 +50,11 @@ import net.opendonut.common.config.ValidationIssue;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.PlayerDataSettings;
 import net.opendonut.common.model.ServerDefinition;
+import net.opendonut.common.model.TimeSettings;
 import net.opendonut.common.playerdata.PlayerDataCoordinator;
 import net.opendonut.common.playerdata.PlayerDataStore;
 import net.opendonut.common.playerdata.SqlitePlayerDataStore;
+import net.opendonut.common.timesync.TimeSyncCoordinator;
 
 /**
  * The OpenDonut Velocity plugin: the authority on where a player is allowed to be.
@@ -128,6 +133,15 @@ public final class OpenDonutVelocityPlugin {
 
 	/** The lease/compare-and-set authority over {@link #playerDataStore}, or {@code null} as above. */
 	private PlayerDataCoordinator playerData;
+
+	/**
+	 * The world-clock synchronisation coordinator, or {@code null} when {@code time.enabled} is false or the
+	 * bridge is down. Null means "no time sync", never "sync unsafely".
+	 */
+	private TimeSyncCoordinator timeSync;
+
+	/** The periodic time-push task, cancelled and rebuilt on every reload. */
+	private ScheduledTask timeSyncTask;
 
 	/**
 	 * Transfers waiting for the source backend to flush the player's data, keyed by player.
@@ -210,6 +224,7 @@ public final class OpenDonutVelocityPlugin {
 		active = false;
 		flushes.clear();
 		closePlayerDataStore();
+		closeTimeSync();
 		Path configPath = dataDirectory.resolve("opendonut.yml");
 		ConfigLoadResult loaded = ConfigLoader.load(configPath);
 
@@ -279,6 +294,7 @@ public final class OpenDonutVelocityPlugin {
 		}
 		verifyBackendsAreRegistered(candidate);
 		setUpPlayerData(candidate);
+		setUpTimeSync(candidate);
 
 		active = true;
 		return true;
@@ -333,6 +349,125 @@ public final class OpenDonutVelocityPlugin {
 			}
 			playerDataStore = null;
 			playerData = null;
+		}
+	}
+
+	/**
+	 * Sets up world-clock synchronisation when the configuration asks for it.
+	 *
+	 * <p>Like player data, time travels over the bridge, so it needs the bridge; without one there is nothing to
+	 * do and every backend keeps its own clock. The coordinator holds the authority's last report and the
+	 * estimate between reports; a periodic task pushes the estimate to every non-authority backend that has a
+	 * live connection.
+	 *
+	 * @param candidate the validated configuration
+	 */
+	private void setUpTimeSync(OpenDonutConfig candidate) {
+		TimeSettings settings = candidate.time();
+		if (!settings.enabled()) {
+			return;
+		}
+		if (!candidate.bridge().enabled()) {
+			logger.error("OpenDonut: time.enabled is true but bridge.enabled is false. Time reports travel over "
+					+ "the bridge, so time sync is OFF. Set bridge.enabled: true or time.enabled: false.");
+			return;
+		}
+		timeSync = new TimeSyncCoordinator(settings);
+		logger.info("OpenDonut: world time sync ready — {}", timeSync.describe());
+
+		if (settings.syncIntervalSeconds() <= 0) {
+			return;
+		}
+		long pollMillis = 1000L;
+		long[] lastPush = {0L};
+		timeSyncTask = server.getScheduler().buildTask(this, () -> {
+			if (timeSync == null || !active) {
+				return;
+			}
+			long now = System.currentTimeMillis();
+			if (now - lastPush[0] < settings.syncIntervalMillis()) {
+				return;
+			}
+			lastPush[0] = now;
+			Optional<TimeSyncCoordinator.ClockReading> estimate = timeSync.estimateAt(now);
+			if (estimate.isEmpty()) {
+				return;
+			}
+			// The bridge only has a channel while a player is on a backend, so the pushable backends are
+			// exactly the current servers of the online players (deduplicated by name).
+			Set<String> pushed = new HashSet<>();
+			for (Player player : server.getAllPlayers()) {
+				Optional<ServerConnection> current = player.getCurrentServer();
+				if (current.isEmpty()) {
+					continue;
+				}
+				ServerConnection connection = current.get();
+				String name = connection.getServerInfo().getName();
+				if (!pushed.add(name) || timeSync.isAuthority(name)) {
+					continue;
+				}
+				sendTimeSet(connection, estimate.get(), "periodic");
+			}
+		}).repeat(pollMillis, TimeUnit.MILLISECONDS).schedule();
+	}
+
+	/**
+	 * Stops the periodic time-push task and drops the coordinator.
+	 */
+	private void closeTimeSync() {
+		if (timeSyncTask != null) {
+			timeSyncTask.cancel();
+			timeSyncTask = null;
+		}
+		timeSync = null;
+	}
+
+	/**
+	 * Pushes the current time estimate to a backend, if time sync is on and a report has been accepted.
+	 *
+	 * @param connection the connection to the backend
+	 * @param reason the reason string for the backend's log: {@code hello}, {@code transfer} or {@code periodic}
+	 */
+	private void sendTimeSet(ServerConnection connection, String reason) {
+		if (timeSync == null) {
+			return;
+		}
+		Optional<TimeSyncCoordinator.ClockReading> estimate = timeSync.estimateAt(System.currentTimeMillis());
+		estimate.ifPresent(reading -> sendTimeSet(connection, reading, reason));
+	}
+
+	/**
+	 * Sends a {@code TIME_SET} carrying a specific reading.
+	 *
+	 * @param connection the connection to the backend
+	 * @param reading the reading to send
+	 * @param reason the reason string for the backend's log
+	 */
+	private void sendTimeSet(
+			ServerConnection connection, TimeSyncCoordinator.ClockReading reading, String reason) {
+		sendTo(connection, new BridgeMessage.TimeSet(
+				reading.clock(), reading.totalTicks(), reading.rate(), reading.paused(), reason));
+	}
+
+	/**
+	 * Handles a backend's {@code TIME_REPORT}: the authority's reading becomes the new base of the estimate.
+	 *
+	 * @param connection the connection the report arrived through
+	 * @param report the report
+	 */
+	private void handleTimeReport(ServerConnection connection, BridgeMessage.TimeReport report) {
+		if (timeSync == null) {
+			return;
+		}
+		String serverName = connection.getServerInfo().getName();
+		TimeSyncCoordinator.ReportVerdict verdict = timeSync.onReport(serverName,
+				new TimeSyncCoordinator.ClockReading(
+						report.clock(), report.totalTicks(), report.rate(), report.paused()),
+				System.currentTimeMillis());
+		if (verdict.accepted()) {
+			logger.info("OpenDonut: time report from '{}': {}", serverName, verdict.detail());
+		} else if (!verdict.detail().isEmpty()) {
+			logger.warn("OpenDonut: ignored a time report from '{}': {}", serverName, verdict.detail());
 		}
 	}
 
@@ -466,6 +601,10 @@ public final class OpenDonutVelocityPlugin {
 			case BridgeMessage.PlayerDataFlushRequest request -> logger.warn(
 					"OpenDonut: backend '{}' sent a PLAYER_DATA_FLUSH_REQUEST; only the proxy may demand a "
 							+ "flush. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.TimeReport report -> handleTimeReport(connection, report);
+			case BridgeMessage.TimeSet set -> logger.warn(
+					"OpenDonut: backend '{}' sent a TIME_SET; only the proxy may set world time. Ignoring it.",
+					connection.getServerInfo().getName());
 		}
 	}
 
@@ -660,6 +799,18 @@ public final class OpenDonutVelocityPlugin {
 
 		sendTo(connection, new BridgeMessage.HelloAck(hello.serverId(), verdict.accepted(),
 				verdict.detail(), resolvedSeed));
+
+		// With time sync on, a verified backend becomes (or confirms) the authority, and a backend that just
+		// announced itself gets the current estimate straight away — this is what corrects a backend that
+		// restarted while the others kept playing.
+		if (timeSync != null) {
+			String name = connection.getServerInfo().getName();
+			timeSync.onBackendVerified(name, System.currentTimeMillis());
+			if (verdict.accepted()) {
+				logger.info("OpenDonut: {}", timeSync.describe());
+				sendTimeSet(connection, "hello");
+			}
+		}
 	}
 
 	/**
@@ -1040,6 +1191,10 @@ public final class OpenDonutVelocityPlugin {
 		logger.debug("OpenDonut: told '{}' to place {} at global ({}, {}, {})",
 				connection.get().getServerInfo().getName(), transfer.playerId(), transfer.globalX(),
 				transfer.globalY(), transfer.globalZ());
+
+		// The same connection is the earliest channel to the destination, so the arrival's clock correction
+		// rides with the placement: the player lands in a world whose time matches the authority.
+		sendTimeSet(connection.get(), "transfer");
 	}
 
 	/**
@@ -1068,6 +1223,7 @@ public final class OpenDonutVelocityPlugin {
 	@Subscribe
 	public void onProxyShutdown(ProxyShutdownEvent event) {
 		closePlayerDataStore();
+		closeTimeSync();
 	}
 
 	/**
@@ -1157,6 +1313,11 @@ public final class OpenDonutVelocityPlugin {
 	/** @return the player-data coordinator, or {@code null} when synchronisation is off */
 	PlayerDataCoordinator playerData() {
 		return playerData;
+	}
+
+	/** @return the world-time coordinator, or {@code null} when time sync is off */
+	TimeSyncCoordinator timeSync() {
+		return timeSync;
 	}
 
 	/**

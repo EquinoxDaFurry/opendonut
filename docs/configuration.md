@@ -462,6 +462,44 @@ design and the failure analysis.
 
 ---
 
+## `time`
+
+Off by default. When enabled, the backends' world clocks stop being independent: one backend is the **time
+authority**, it reports its clock to the proxy over the bridge every `report-interval-seconds`, and the proxy
+pushes the current time to every other backend when that backend announces itself, when a player arrives on it
+during a transfer, and every `sync-interval-seconds`. The proxy caches the authority's last report and advances
+it by wall clock between reports, so an authority with no players online (and therefore no bridge channel to
+report on) still yields a good estimate. Run `/time` on the **authority** to change the time network-wide; a
+`/time` run anywhere else is corrected by the next push.
+
+The same section must be present (with the same values) on the proxy and on every backend, and the
+[`bridge`](#bridge) must be enabled.
+
+```yaml
+time:
+  enabled: false
+  authority: auto
+  clock: minecraft:overworld
+  report-interval-seconds: 5
+  sync-interval-seconds: 30
+  log-divergence-ticks: 20
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Master switch. `false` keeps every backend on its own clock, as before |
+| `authority` | `auto` or server id | `auto` | The backend whose clock is the truth. `auto` = the first backend the proxy verifies. An id that names no configured server is a `TIME_AUTHORITY_UNKNOWN` error at load time |
+| `clock` | registry id | `minecraft:overworld` | Which world clock to synchronise. Vanilla provides `minecraft:overworld` (also the nether's clock) and `minecraft:the_end` |
+| `report-interval-seconds` | 1–3600 | `5` | How often a backend reports its clock reading to the proxy. Must be at least 1 |
+| `sync-interval-seconds` | 0–3600 | `30` | How often the proxy pushes the estimated time to every non-authority backend. `0` = only on registration and on player arrival |
+| `log-divergence-ticks` | 0–1000000 | `20` | A correction moving a backend's clock by more than this is logged at warning level. `0` logs every correction |
+
+Phase 1 synchronises the clock's tick count only. Weather (rain/thunder) and the clock's rate/pause state are not
+synchronised. See [plan-time-sync.md](plan-time-sync.md) for the design, including why the proxy cannot simply ask
+the authority for its time whenever it wants to (the bridge only exists while a player is on a backend).
+
+---
+
 ## Seeds
 
 ```yaml

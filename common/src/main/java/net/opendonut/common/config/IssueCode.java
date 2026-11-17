@@ -98,6 +98,10 @@ public enum IssueCode {
 	/** The backend runs a different Minecraft version from the configured one. */
 	MINECRAFT_VERSION_MISMATCH(Severity.ERROR),
 
+	// --- time synchronisation ------------------------------------------------
+	/** The configured time authority is not one of the configured servers. */
+	TIME_AUTHORITY_UNKNOWN(Severity.ERROR),
+
 	// --- informational ------------------------------------------------------
 	/** Derived values worth showing, such as route lookup results. */
 	DERIVED_VALUE(Severity.INFO);

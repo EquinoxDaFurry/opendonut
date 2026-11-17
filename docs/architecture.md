@@ -282,6 +282,8 @@ Design notes:
 | `TRANSFER_REQUEST` | backend → proxy | "Player X left my region at these coordinates" — includes a destination *hint* |
 | `TRANSFER_RESULT` | proxy → backend | Whether the move happened, and why not if it did not |
 | `PLACE_PLAYER` | proxy → backend | "Put this arriving player at these global coordinates" |
+| `TIME_REPORT` | backend → proxy | "My reading of world clock C right now" — only the configured authority's reading is trusted |
+| `TIME_SET` | proxy → backend | "Set world clock C to this reading" — sent on hello, on arrival, and periodically |
 
 ### 6.4 The transfer protocol, step by step
 

@@ -190,7 +190,8 @@ Details, including the security reasoning and the failure cases, are in
 | [docs/installation.md](docs/installation.md) | Installing the proxy and backends, secure forwarding, seeding worlds, running the tests |
 | [docs/adding-servers.md](docs/adding-servers.md) | Adding the third, fourth and twentieth server without touching Java code |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Every symptom with its diagnosis, including seed changes and failed transfers |
-| [docs/plan-player-data-sync.md](docs/plan-player-data-sync.md) | **Proposal, not implemented.** How inventories, XP and the rest could follow a player across a boundary, including the designs that should be rejected, the lease-based design that should not, and how to test it |
+| [docs/plan-player-data-sync.md](docs/plan-player-data-sync.md) | How inventories, XP and the rest follow a player across a boundary: the rejected designs, the lease-based design that was implemented, and how to test it |
+| [docs/plan-time-sync.md](docs/plan-time-sync.md) | **Proposal, not implemented.** How one backend becomes the time authority and the proxy keeps every other backend's clock in step, including the per-player-channel constraint that rules out a naive "ask the truth server" design |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, and the rules a change has to follow |
 
 ## Project layout

@@ -91,7 +91,27 @@ public enum MessageType {
 	 * that cannot answer in time causes the transfer to be refused (by default), because a player is never
 	 * moved away from their own items.
 	 */
-	PLAYER_DATA_FLUSH_REQUEST(10);
+	PLAYER_DATA_FLUSH_REQUEST(10),
+
+	/**
+	 * Backend to proxy. "This is my reading of world clock C right now."
+	 *
+	 * <p>Sent by every backend that has the {@code time} section enabled, right after its {@code HELLO_ACK}
+	 * and then every {@code time.report-interval-seconds}, through whichever player connection is carrying
+	 * the frame (the bridge has no connection of its own). The proxy only trusts the reading of the
+	 * configured time authority and ignores the rest, so a misconfigured backend cannot move the network
+	 * clock. See {@code docs/plan-time-sync.md}.
+	 */
+	TIME_REPORT(11),
+
+	/**
+	 * Proxy to backend. "Set world clock C to this reading."
+	 *
+	 * <p>Sent when a backend announces itself, when a player arrives on it during a transfer, and
+	 * periodically to every non-authority backend, so that all backends converge on the authority's clock.
+	 * The destination applies it to its own {@code ServerClockManager} and resynchronises its players.
+	 */
+	TIME_SET(12);
 
 	private final int wireId;
 

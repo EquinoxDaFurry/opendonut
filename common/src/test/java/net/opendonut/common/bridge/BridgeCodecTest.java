@@ -160,6 +160,28 @@ class BridgeCodecTest {
 		}
 
 		@Test
+		@DisplayName("TIME_REPORT survives encoding and decoding intact")
+		void timeReport() {
+			BridgeMessage.TimeReport sent =
+					new BridgeMessage.TimeReport("minecraft:overworld", 123456789L, 1.0f, false);
+			BridgeMessage.TimeReport received = assertInstanceOf(BridgeMessage.TimeReport.class, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+			assertEquals("minecraft:overworld", received.clock());
+			assertEquals(123456789L, received.totalTicks());
+			assertEquals(1.0f, received.rate());
+			assertFalse(received.paused());
+		}
+
+		@Test
+		@DisplayName("TIME_SET survives encoding and decoding intact, including a paused clock and a reason")
+		void timeSet() {
+			BridgeMessage.TimeSet sent =
+					new BridgeMessage.TimeSet("minecraft:overworld", 18000L, 0.5f, true, "transfer");
+			assertEquals(sent, decodeOrFail(
+					BridgeCodec.encode(sent, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
 		@DisplayName("encoding a message whose payload would exceed the frame limit is refused, not truncated")
 		void oversizedPayloadRefused() {
 			byte[] tooBig = new byte[BridgeCodec.MAX_PAYLOAD_BYTES + 1];

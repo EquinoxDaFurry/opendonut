@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.PlayerDataSettings;
+import net.opendonut.common.model.TimeSettings;
 import net.opendonut.common.model.TransferFailurePolicy;
 import net.opendonut.common.model.UnknownFieldPolicy;
 import net.opendonut.common.model.UnassignedAreaPolicy;
@@ -297,6 +298,134 @@ class ConfigLoaderTest {
 					  on-flush-failure: explode
 					""");
 			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+		}
+	}
+
+	@Nested
+	@DisplayName("the time section")
+	class Time {
+
+		@Test
+		@DisplayName("is absent by default: disabled, auto authority, overworld clock, opt-in")
+		void absentMeansDisabled() {
+			OpenDonutConfig config = load(VALID).config().orElseThrow();
+			TimeSettings settings = config.time();
+			assertFalse(settings.enabled(), "time sync must be opt-in, so an old config keeps its old behaviour");
+			assertTrue(settings.authorityIsAuto());
+			assertEquals(TimeSettings.AUTHORITY_AUTO, settings.authority());
+			assertEquals(TimeSettings.DEFAULT_CLOCK, settings.clock());
+			assertEquals(5, settings.reportIntervalSeconds());
+			assertEquals(30, settings.syncIntervalSeconds());
+			assertEquals(20, settings.logDivergenceTicks());
+		}
+
+		@Test
+		@DisplayName("every documented key is read")
+		void allKeys() {
+			String yaml = VALID + """
+					time:
+					  enabled: true
+					  authority: west
+					  clock: minecraft:the_end
+					  report-interval-seconds: 2
+					  sync-interval-seconds: 0
+					  log-divergence-ticks: 100
+					""";
+			ConfigLoadResult result = load(yaml);
+			assertTrue(result.isUsable(), () -> result.result().formatWithSummary());
+			TimeSettings settings = result.config().orElseThrow().time();
+			assertTrue(settings.enabled());
+			assertFalse(settings.authorityIsAuto());
+			assertEquals("west", settings.explicitAuthority());
+			assertEquals("minecraft:the_end", settings.clockId());
+			assertEquals(2, settings.reportIntervalSeconds());
+			assertEquals(2_000L, settings.reportIntervalMillis());
+			assertEquals(0, settings.syncIntervalSeconds());
+			assertEquals(0L, settings.syncIntervalMillis());
+			assertEquals(100, settings.logDivergenceTicks());
+		}
+
+		@Test
+		@DisplayName("enabled: true with nothing else uses every default, and an explicit authority that exists passes")
+		void enabledOnly() {
+			OpenDonutConfig config = load(VALID + """
+					time:
+					  enabled: true
+					  authority: east
+					""").config().orElseThrow();
+			TimeSettings settings = config.time();
+			assertTrue(settings.enabled());
+			assertEquals("east", settings.explicitAuthority());
+			assertEquals(TimeSettings.DEFAULT_CLOCK, settings.clock());
+		}
+
+		@Test
+		@DisplayName("an explicit authority that names no server is a TIME_AUTHORITY_UNKNOWN error")
+		void unknownAuthority() {
+			ConfigLoadResult result = load(VALID + """
+					time:
+					  enabled: true
+					  authority: north
+					""");
+			assertTrue(result.result().contains(IssueCode.TIME_AUTHORITY_UNKNOWN),
+					() -> "expected a TIME_AUTHORITY_UNKNOWN finding but got:\n"
+							+ result.result().formatWithSummary());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("an invalid clock id is a reported error naming the section")
+		void badClock() {
+			ConfigLoadResult result = load(VALID + """
+					time:
+					  enabled: true
+					  clock: "Not A Clock!!"
+					""");
+			assertTrue(result.result().contains(IssueCode.INVALID_VALUE),
+					() -> result.result().formatWithSummary());
+			assertTrue(result.result().formatWithSummary().contains("time"),
+					"the finding must name the section:\n" + result.result().formatWithSummary());
+		}
+
+		@Test
+		@DisplayName("out-of-range intervals are reported errors, and 0 is legal only for the push interval")
+		void outOfRange() {
+			ConfigLoadResult noReport = load(VALID + """
+					time:
+					  enabled: true
+					  report-interval-seconds: 0
+					""");
+			assertTrue(noReport.result().contains(IssueCode.INVALID_VALUE),
+					() -> noReport.result().formatWithSummary());
+
+			ConfigLoadResult negativePush = load(VALID + """
+					time:
+					  enabled: true
+					  sync-interval-seconds: -1
+					""");
+			assertTrue(negativePush.result().contains(IssueCode.INVALID_VALUE),
+					() -> negativePush.result().formatWithSummary());
+
+			ConfigLoadResult zeroPush = load(VALID + """
+					time:
+					  enabled: true
+					  sync-interval-seconds: 0
+					""");
+			assertTrue(zeroPush.isUsable(), () -> zeroPush.result().formatWithSummary());
+			assertEquals(0, zeroPush.config().orElseThrow().time().syncIntervalSeconds());
+		}
+
+		@Test
+		@DisplayName("an unknown key in the section is reported under the configured policy")
+		void unknownKey() {
+			ConfigLoadResult result = load(VALID + """
+					time:
+					  enabled: true
+					  timezone: utc
+					""");
+			assertTrue(result.isUsable());
+			assertTrue(result.result().contains(IssueCode.UNKNOWN_FIELD),
 					() -> result.result().formatWithSummary());
 		}
 	}

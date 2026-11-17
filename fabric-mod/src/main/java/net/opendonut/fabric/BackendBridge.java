@@ -88,6 +88,13 @@ final class BackendBridge {
 		 * @param request the flush request
 		 */
 		void onPlayerDataFlushRequest(BridgeMessage.PlayerDataFlushRequest request);
+
+		/**
+		 * The proxy set the world clock.
+		 *
+		 * @param set the instruction
+		 */
+		void onTimeSet(BridgeMessage.TimeSet set);
 	}
 
 	private final byte[] secret;
@@ -196,6 +203,10 @@ final class BackendBridge {
 			case BridgeMessage.PlayerDataLoadResponse response -> listener.onPlayerDataLoadResponse(response);
 			case BridgeMessage.PlayerDataSaveResult result -> listener.onPlayerDataSaveResult(result);
 			case BridgeMessage.PlayerDataFlushRequest request -> listener.onPlayerDataFlushRequest(request);
+			case BridgeMessage.TimeSet set -> listener.onTimeSet(set);
+			case BridgeMessage.TimeReport ignored -> logger.warn(
+					"OpenDonut: the proxy sent a TIME_REPORT to a backend; only backends report their clock. "
+							+ "Ignoring it.");
 			case BridgeMessage.Hello ignored -> logger.warn(
 					"OpenDonut: the proxy sent a HELLO to a backend; that message only travels the other way. "
 							+ "Ignoring it.");
