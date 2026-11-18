@@ -10,9 +10,11 @@ import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -20,8 +22,14 @@ import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.dedicated.DedicatedServerProperties;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 import org.slf4j.Logger;
 
@@ -96,6 +104,9 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 	private BackendBridge bridge;
 	private PlayerDataSync playerDataSync;
 	private WorldTimeSync worldTimeSync;
+	private RegionContainment containment;
+	private AdvancementSync advancementSync;
+	private ChatSync chatSync;
 	private Optional<BorderParticles> borderParticles = Optional.empty();
 	private Path configPath;
 	private Path configDirectory;
@@ -188,6 +199,12 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		backend.playerDataSync = PlayerDataSync.create(server, config, backend.bridge, identity.get().id(), logger)
 				.orElse(null);
 		backend.worldTimeSync = WorldTimeSync.create(server, config, backend.bridge, logger).orElse(null);
+		// Containment is a safety invariant, so it is created even when transfers are off; it only needs the
+		// region, not the bridge.
+		backend.containment = RegionContainment.create(server, config, identity.get(), logger).orElse(null);
+		backend.advancementSync =
+				AdvancementSync.create(server, config, backend.bridge, identity.get().id(), logger).orElse(null);
+		backend.chatSync = ChatSync.create(server, config, backend.bridge, logger).orElse(null);
 		backend.borderParticles = BorderParticles.create(config.borderParticles(), logger);
 		// The full "who am I and where am I" summary is logged by completeStartup, once the world is known.
 		return Optional.of(backend);
@@ -494,6 +511,13 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		if (playerDataSync != null) {
 			playerDataSync.onPlayerJoin(player);
 		}
+		// Advancements ride on the same join, right after the player-data request on the same connection.
+		if (advancementSync != null) {
+			advancementSync.onPlayerJoin(player);
+		}
+		if (containment != null) {
+			containment.onPlayerJoin(player);
+		}
 	}
 
 	/**
@@ -506,8 +530,14 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		if (playerDataSync != null) {
 			playerDataSync.onPlayerDisconnect(player);
 		}
+		if (advancementSync != null) {
+			advancementSync.onPlayerDisconnect(player);
+		}
 		tracker.forget(player.getUUID());
 		borderParticles.ifPresent(particles -> particles.forget(player.getUUID()));
+		if (containment != null) {
+			containment.onPlayerDisconnect(player);
+		}
 	}
 
 	/**
@@ -565,6 +595,21 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		// its clock in step with the authority.
 		if (worldTimeSync != null) {
 			worldTimeSync.tick(server);
+		}
+
+		// Hard containment runs before the transfer gate and even when transfers are disabled: keeping the
+		// outside of this region unreal is a safety invariant, not a feature of routing.
+		if (containment != null) {
+			try {
+				containment.tick(server);
+			} catch (RuntimeException e) {
+				logger.error("OpenDonut: containment tick failed: {}", e.toString(), e);
+			}
+		}
+
+		// Advancement saving runs even when transfers are disabled, for the same reason as player data.
+		if (advancementSync != null) {
+			advancementSync.tick(server);
 		}
 
 		if (bridge == null || !transfersEnabled) {
@@ -1080,12 +1125,117 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 			logger.warn("OpenDonut: the proxy asked this server to flush {} but player-data sync is not active "
 					+ "here; the transfer will time out and be refused", request.playerId());
 		}
+		// Advancements are flushed on the same demand, right after the player data.
+		if (advancementSync != null) {
+			advancementSync.onFlushRequest(request);
+		}
 	}
 
 	@Override
 	public void onTimeSet(BridgeMessage.TimeSet set) {
 		if (worldTimeSync != null) {
 			worldTimeSync.onTimeSet(set);
+		}
+	}
+
+	@Override
+	public void onAdvancementsLoadResponse(BridgeMessage.AdvancementsLoadResponse response) {
+		if (advancementSync != null) {
+			advancementSync.onLoadResponse(response);
+		}
+	}
+
+	@Override
+	public void onAdvancementsSaveResult(BridgeMessage.AdvancementsSaveResult result) {
+		if (advancementSync != null) {
+			advancementSync.onSaveResult(result);
+		}
+	}
+
+	@Override
+	public void onChatBroadcast(BridgeMessage.ChatBroadcast broadcast) {
+		if (chatSync != null) {
+			chatSync.onBroadcast(broadcast);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Event handlers registered in OpenDonutMod, forwarded to the guards
+	// ------------------------------------------------------------------
+
+	/**
+	 * Whether a block break is allowed, from {@code PlayerBlockBreakEvents.BEFORE}.
+	 *
+	 * @param level the level
+	 * @param player the player
+	 * @param pos the block position
+	 * @return {@code true} to allow, {@code false} to cancel
+	 */
+	public boolean allowBlockBreak(Level level, Player player, BlockPos pos) {
+		return containment == null || containment.allowBlockBreak(level, player, pos);
+	}
+
+	/**
+	 * A right-click on a block, from {@code UseBlockCallback}.
+	 *
+	 * @param player the player
+	 * @param level the level
+	 * @param hand the hand
+	 * @param hit the block hit
+	 * @return the interaction result
+	 */
+	public InteractionResult onUseBlock(Player player, Level level, InteractionHand hand, BlockHitResult hit) {
+		return containment == null ? InteractionResult.PASS : containment.onUseBlock(player, level, hand, hit);
+	}
+
+	/**
+	 * A left-click on a block, from {@code AttackBlockCallback}.
+	 *
+	 * @param player the player
+	 * @param level the level
+	 * @param hand the hand
+	 * @param pos the block position
+	 * @param direction the clicked face
+	 * @return the interaction result
+	 */
+	public InteractionResult onAttackBlock(
+			Player player, Level level, InteractionHand hand, BlockPos pos, Direction direction) {
+		return containment == null ? InteractionResult.PASS
+				: containment.onAttackBlock(player, level, hand, pos, direction);
+	}
+
+	/**
+	 * Whether an entity may load, from {@code ServerEntityEvents.ALLOW_LOAD}.
+	 *
+	 * @param entity the entity
+	 * @param level the level
+	 * @return {@code true} to allow the load
+	 */
+	public boolean allowEntityLoad(Entity entity, ServerLevel level) {
+		return containment == null || containment.allowEntityLoad(entity, level);
+	}
+
+	/**
+	 * An entity loaded, from {@code ServerEntityEvents.ENTITY_LOAD}.
+	 *
+	 * @param entity the entity
+	 * @param level the level
+	 */
+	public void onEntityLoad(Entity entity, ServerLevel level) {
+		if (containment != null) {
+			containment.onEntityLoad(entity, level);
+		}
+	}
+
+	/**
+	 * A chat message was sent, from {@code ServerMessageEvents.CHAT_MESSAGE}.
+	 *
+	 * @param sender the sender
+	 * @param message the message
+	 */
+	public void onChatMessage(ServerPlayer sender, PlayerChatMessage message) {
+		if (chatSync != null) {
+			chatSync.onChatMessage(sender, message);
 		}
 	}
 

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.NbtUtils;
@@ -117,6 +118,27 @@ final class BackendBridge {
 		 * @param portal the instruction
 		 */
 		void onPlacePortal(BridgeMessage.PlacePortal portal);
+
+		/**
+		 * The proxy answered an advancement load request.
+		 *
+		 * @param response the response
+		 */
+		void onAdvancementsLoadResponse(BridgeMessage.AdvancementsLoadResponse response);
+
+		/**
+		 * The proxy reported the outcome of an advancement save.
+		 *
+		 * @param result the outcome
+		 */
+		void onAdvancementsSaveResult(BridgeMessage.AdvancementsSaveResult result);
+
+		/**
+		 * The proxy relays a chat message from another backend.
+		 *
+		 * @param broadcast the message to display locally
+		 */
+		void onChatBroadcast(BridgeMessage.ChatBroadcast broadcast);
 	}
 
 	private final byte[] secret;
@@ -249,6 +271,18 @@ final class BackendBridge {
 			case BridgeMessage.PlayerDataSaveRequest ignored -> logger.warn(
 					"OpenDonut: the proxy sent a PLAYER_DATA_SAVE_REQUEST to a backend; only backends save "
 							+ "data. Ignoring it.");
+			case BridgeMessage.AdvancementsLoadResponse response -> listener.onAdvancementsLoadResponse(response);
+			case BridgeMessage.AdvancementsSaveResult result -> listener.onAdvancementsSaveResult(result);
+			case BridgeMessage.ChatBroadcast broadcast -> listener.onChatBroadcast(broadcast);
+			case BridgeMessage.AdvancementsLoadRequest ignored -> logger.warn(
+					"OpenDonut: the proxy sent an ADVANCEMENTS_LOAD_REQUEST to a backend; only backends ask "
+							+ "for advancements. Ignoring it.");
+			case BridgeMessage.AdvancementsSaveRequest ignored -> logger.warn(
+					"OpenDonut: the proxy sent an ADVANCEMENTS_SAVE_REQUEST to a backend; only backends save "
+							+ "advancements. Ignoring it.");
+			case BridgeMessage.ChatRelay ignored -> logger.warn(
+					"OpenDonut: the proxy sent a CHAT_RELAY to a backend; only backends relay chat out. "
+							+ "Ignoring it.");
 		}
 	}
 
@@ -378,6 +412,46 @@ final class BackendBridge {
 						level.dimension().identifier().toString(),
 						origin.getX(), origin.getY(), origin.getZ(),
 						blocks)));
+	}
+
+	/**
+	 * Builds the request for a player's stored advancement progress.
+	 *
+	 * <p>Sent on the player's own connection right after the {@code PLAYER_DATA_LOAD_REQUEST} for the same
+	 * join, so the two answers arrive together and the proxy's load handler has already moved the lease by
+	 * the time the advancements are read.
+	 *
+	 * @param player the player whose advancements are wanted
+	 * @param serverId this backend's id
+	 * @return the message
+	 */
+	static BridgeMessage.AdvancementsLoadRequest advancementsLoadRequest(ServerPlayer player, String serverId) {
+		return new BridgeMessage.AdvancementsLoadRequest(player.getUUID(), serverId);
+	}
+
+	/**
+	 * Builds a save request for a player's advancement progress.
+	 *
+	 * @param playerId the player
+	 * @param serverId this backend's id
+	 * @param baseRevision the revision the payload was based on
+	 * @param payload the raw advancements JSON bytes
+	 * @return the message
+	 */
+	static BridgeMessage.AdvancementsSaveRequest advancementsSaveRequest(
+			UUID playerId, String serverId, long baseRevision, byte[] payload) {
+		return new BridgeMessage.AdvancementsSaveRequest(playerId, serverId, baseRevision, payload);
+	}
+
+	/**
+	 * Builds a chat relay: "this player said this, show it on the other backends".
+	 *
+	 * @param player the sender
+	 * @param content the plain text of the signed chat body
+	 * @return the message
+	 */
+	static BridgeMessage.ChatRelay chatRelay(ServerPlayer player, String content) {
+		return new BridgeMessage.ChatRelay(player.getUUID(), player.getName().getString(), content);
 	}
 
 	/** @return how many frames this backend has sent */

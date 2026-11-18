@@ -2,10 +2,17 @@ package net.opendonut.fabric;
 
 import java.nio.file.Path;
 
+import net.minecraft.world.InteractionResult;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.loader.api.FabricLoader;
@@ -110,6 +117,40 @@ public final class OpenDonutMod implements ModInitializer {
 			}
 			// Runs on the server thread, which is where the tracker expects to be touched.
 			backend.bridge().ifPresent(bridge -> bridge.receive(context.player(), payload.frame()));
+		});
+
+		// Hard region containment. The handlers read the backend at execution time, so they answer sensibly
+		// (allowing everything) when OpenDonut stayed inert because the configuration was unusable.
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> {
+			OpenDonutBackend current = backend;
+			return current == null || current.allowBlockBreak(level, player, pos);
+		});
+		UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+			OpenDonutBackend current = backend;
+			return current == null ? InteractionResult.PASS : current.onUseBlock(player, level, hand, hit);
+		});
+		AttackBlockCallback.EVENT.register((player, level, hand, pos, direction) -> {
+			OpenDonutBackend current = backend;
+			return current == null ? InteractionResult.PASS
+					: current.onAttackBlock(player, level, hand, pos, direction);
+		});
+		ServerEntityEvents.ALLOW_LOAD.register((entity, level, reason, previouslyGenerated) -> {
+			OpenDonutBackend current = backend;
+			return current == null || current.allowEntityLoad(entity, level);
+		});
+		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
+			OpenDonutBackend current = backend;
+			if (current != null) {
+				current.onEntityLoad(entity, level);
+			}
+		});
+
+		// Cross-server chat: relay local chat out through the proxy.
+		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
+			OpenDonutBackend current = backend;
+			if (current != null) {
+				current.onChatMessage(sender, message);
+			}
 		});
 
 		// The tree is built once but reads the backend at execution time, so it also answers sensibly — and
