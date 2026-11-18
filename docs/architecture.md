@@ -288,6 +288,12 @@ Design notes:
 | `PLACE_DIMENSION` | proxy → backend | "Place arriving player X in dimension D" — sent right after the `PLACE_PLAYER` for the same transfer |
 | `TRANSFER_PORTAL` | backend → proxy | "Player X went through a portal; here are the blocks around the far side" — sent right before the `TRANSFER_REQUEST` for the same move |
 | `PLACE_PORTAL` | proxy → backend | "Recreate these blocks at this origin in this level" — sent right after the `PLACE_DIMENSION` for the same transfer |
+| `ADVANCEMENTS_LOAD_REQUEST` | backend → proxy | "Send me the stored advancement progress of player X" — sent right after the `PLAYER_DATA_LOAD_REQUEST` for the same join |
+| `ADVANCEMENTS_LOAD_RESPONSE` | proxy → backend | The raw bytes of the stored `advancements/<uuid>.json` (empty when none is stored) |
+| `ADVANCEMENTS_SAVE_REQUEST` | backend → proxy | "Store these advancement bytes for player X" — compare-and-set on the revision, sent after every save |
+| `ADVANCEMENTS_SAVE_RESULT` | proxy → backend | Whether the advancement payload was stored, and the new revision |
+| `CHAT_RELAY` | backend → proxy | "Player X said this in chat" — plain text only, signatures are never forwarded |
+| `CHAT_BROADCAST` | proxy → backend | "Show this chat line from player X locally" — sent to every backend except the source |
 
 The two worlds are separate folders with the same seed, so terrain matches across a boundary but player-built
 blocks do not. A nether portal whose linked far side falls in another region (possible because vanilla searches
@@ -297,6 +303,18 @@ small box of non-air, non-liquid blocks around the arrival point, the destinatio
 level, and the arriving player gets the vanilla portal-travel cooldown so they are not immediately teleported
 back through the recreated portal. Old builds refuse the unknown ids cleanly and the arrival is portal-less, as
 before.
+
+Advancements live in a per-player JSON file in each backend's world folder, not in the player data, so ids
+17–20 carry them as their own payload: the proxy stores the raw bytes in a `player_advancements` table with its
+own revision counter, under the same lease and with the same compare-and-set rule as snapshots. On join the
+backend asks for the stored bytes (right after the player-data request on the same connection), writes them to
+its own file, reloads from it, and sends the client a full advancements packet so the screen is correct
+immediately; on every save (periodic, disconnect, flush before a transfer) the freshly written local file is
+sent back. Chat (ids 21–22) is simpler: the sending backend relays the plain text of the message, and the proxy
+broadcasts it to every other backend that currently has players, which displays it as an unsigned
+`<name> message` line. Signatures never cross the bridge, and a broadcast is never relayed again, so each line
+appears exactly once per server and can always be told apart from the sender's signed chat. Old builds refuse
+all six ids cleanly (`UNKNOWN_MESSAGE_TYPE`) and advancements/chat simply stay local, as before.
 
 `TRANSFER_REQUEST`/`PLACE_PLAYER` cannot carry a dimension field — their fields are frozen — so the dimension
 travels in its own pair of messages (ids 13–14). The pair is sent on the same connection, in order, which is

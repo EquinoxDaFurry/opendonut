@@ -164,6 +164,34 @@ anti-oscillation margin, and the failure policy.
 | 32 | Walk back through the recreated portal on `east` | You arrive on `west` in the original dimension, at the near-side portal — a working round trip, no ping-pong |
 | 33 | Walk across the boundary on foot (no portal near the arrival point) | No `TRANSFER_PORTAL` is sent (nothing to replicate) and no `recreated ... portal block(s)` appears — plain transfers are unchanged |
 
+### Checklist: hard region containment (on by default; `containment:` section)
+
+| # | Do this | Expect |
+|---|---|---|
+| 34 | On either backend, walk to the border and try to break a block **past** `x = 0` (e.g. stand at `x = -1` on `west`, break at `x = 0`) | The break is cancelled; the backend logs (at most once per 5 s) `containment denied ... break a block at ... outside ...`; the block is still there |
+| 35 | Stand at `x = -1` on `west` with a block in hand, facing east, and try to place it at `x = 0` | The placement is cancelled with `containment denied ... place a block at ...`; nothing appears |
+| 36 | Open a chest / furnace / door whose block is past the border | The interaction fails (`containment denied ... use/attack a block at ...`) — you cannot reach across the seam |
+| 37 | Drop items at the border so they land past `x = 0` (or throw them across) | Within one sweep interval (20 ticks) the item entity is back inside the region; the sweep counts it in `containment` describe output |
+| 38 | Spawn a mob past the border (`/summon zombie ~ ~ ~` at `x = 1` on `west`) | `ALLOW_LOAD`/`ENTITY_LOAD` containment discards it — `entitiesContained` rises; no mob exists outside the region |
+| 39 | Lag hard at the border (or use a teleport) so you end up more than `max-overshoot-blocks` (2) past `x = 0` | Within one tick you are teleported back to the clamp line; the log shows `containment clamped <you> back from N block(s) outside ... (limit 2)` |
+| 40 | Stand within 48 blocks of the border and check your client's chunk radius (`F3` debug screen, "Chunk" line) | It drops to `near-border-chunk-radius` (3); walk back into the middle of the region and it returns to the server view distance |
+
+### Checklist: login routing (no config beyond default `proxy.remember-last-server: true`)
+
+| # | Do this | Expect |
+|---|---|---|
+| 41 | Log in while on `east`'s side of the world, log off, then log in again | The proxy logs `sending <you> straight to 'east', the server they last played on` and you land on `east` directly — no `west` chunks load around your logout position (watch `west`'s log: no join/transfer lines for you) |
+| 42 | After a **proxy restart**, log in again | The first login falls back to the default initial server (the memory is in-process); from the second login on, the direct routing resumes |
+
+### Checklist: advancements and chat across servers (`player-data.sync-advancements: true` default while player-data is on; `chat.enabled: true`)
+
+| # | Do this | Expect |
+|---|---|---|
+| 43 | On `west`, earn an advancement (e.g. `minecraft:story/mine_them_all` or any recipe), wait one `sync-interval-seconds` (or cross the boundary, which flushes), then log out and back in on `east` | The proxy logs `sent the stored advancements of <uuid> to 'east'`, `east` logs `applied the stored advancements of <you> (N bytes, revision R)`, and your advancement screen on `east` already shows it (full resync packet, no relog needed) |
+| 44 | Earn another advancement on `east`, cross back to `west` | `west` applies the stored payload and shows the new advancement too — progress follows you both ways, revisions moving (`stored the advancements of ... as revision N`) |
+| 45 | With `chat.enabled: true`, send a chat message on `west` while a second player is on `east` | The proxy logs `relayed chat from '<you>' on 'west' to 1 other backend(s)`; the player on `east` sees an unsigned `<you> message` line; the sender on `west` sees their normal signed chat, not a relay |
+| 46 | Send a chat message on `east` | The player on `west` sees the relay; the player on `east` does not see it twice (no loop) |
+
 ### What a boundary crossing should look like
 
 Backend `west`:
@@ -228,6 +256,8 @@ in [`results/`](results).
 | **Boundary-straddling portal, live startup** | See the deploy after the in-game run; logs will be `results/2026-11-17-portal-live-*.log`. |
 | **Boundary-straddling portal, in-game** (checklist 31–33) | **Not yet run.** Needs a client building a portal whose far side crosses `x = 0` and walking through it: expect `recreated N portal block(s) ...` on the destination and a working round trip. |
 | **Appending a config section under PowerShell 5.1, first attempt** | **Failed, diagnosed and fixed.** `Get-Content -Raw` decodes with the system ANSI codepage (cp1252 here), so the live configs' UTF-8 em-dash line was re-encoded as mojibake containing C1 control bytes, and SnakeYAML rejected all three configs with `YAML_INVALID: special characters are not allowed` (OpenDonut went inactive on all three processes). Fixed by restoring the backups and re-appending with an explicit `[System.Text.Encoding]::UTF8` read + no-BOM UTF-8 write; all three configs then pass `check` and the em-dash bytes are preserved. Rule for this workspace: **never** read or write the live YAML with implicit encodings — always `[System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)` / `WriteAllText(..., UTF8Encoding($false))`. |
+| **Advancements + chat + containment + login routing, unit level** (2026-11-19) | **Pass.** 369 tests, 0 failures: codec round-trips and the >4096-char chat rejection for ids 17–22 in `BridgeCodecTest`; the `containment:`/`chat:`/`proxy.remember-last-server`/`player-data.sync-advancements` sections and `CONTAINMENT_OVERSHOOT_BELOW_MARGIN` in `ConfigLoaderTest`; the `player_advancements` store contract against both stores plus the coordinator's advancements load/save/lease/CAS/oversize tests; `LastServerRegistryTest` (remember/overwrite/cap); `RegionContainmentTest` pinning the clamp lines, border distance and the invariant that a clamped position is never more than the overshoot limit outside, for any input. |
+| **Advancements + chat + containment + login routing, live startup** (2026-11-19, logs `results/2026-11-19-containment-live-*.log`) | See the deploy row below once the stack is restarted; expected: both backends log `region containment active for 'west'/'east' — max overshoot 2 block(s), ...`, `advancement sync ready on this backend`, the proxy logs `chat relay active` (with `chat.enabled: true` added to the three live configs, backups `*.opendonut-backup-containment` kept), and fingerprint `6488b4ac` on all three — no regression to player-data or time sync. In-game checks are checklist 34–46. |
 
 ### Honest summary
 

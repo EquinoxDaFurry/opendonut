@@ -262,6 +262,7 @@ proxy:
   require-backend-hello: true
   arrival-verification-timeout-seconds: 5
   disconnect-unrouted-players: false
+  remember-last-server: true
 ```
 
 | Key | Type | Default | Meaning |
@@ -270,6 +271,7 @@ proxy:
 | `require-backend-hello` | boolean | `true` | Verify every backend against this file before placing players on it. See the three admission states below |
 | `arrival-verification-timeout-seconds` | 1–30 | `5` | How long the proxy may hold an arriving player on a backend that has not verified itself yet, before returning them to where they came from. Keep it shorter than `transfer.max-pending-seconds` (the validator says so if you do not) |
 | `disconnect-unrouted-players` | boolean | `false` | Whether a player routed into an unowned coordinate is disconnected. `false` leaves them where they are, which is the gentler default |
+| `remember-last-server` | boolean | `true` | Send a player straight to the backend they last played on at login, instead of the default initial server (which would load chunks around their logout position on a server they are immediately moved away from). The memory is in-process: after a proxy restart the first login of each player falls back to the default behaviour. A remembered server that is not registered or is refused is ignored |
 
 ### How a backend becomes trusted
 
@@ -436,6 +438,7 @@ player-data:
   keep-history: 20
   max-payload-bytes: 49152
   flush-timeout-seconds: 10
+  sync-advancements: true
 ```
 
 | Key | Type | Default | Meaning |
@@ -450,6 +453,7 @@ player-data:
 | `keep-history` | 0–1000 | `20` | Previous snapshots kept per player in the database, for recovery after a bad transfer |
 | `max-payload-bytes` | 1024–61440 | `49152` | Largest snapshot, after compression, that fits one bridge frame. A larger snapshot refuses the transfer with an explanation rather than being truncated |
 | `flush-timeout-seconds` | 1–60 | `10` | How long the proxy waits for the source server to commit the player's data before refusing the transfer. Must stay below `transfer.max-pending-seconds` |
+| `sync-advancements` | boolean | `true` | Also synchronise advancement progress. Advancements live in `world/players/advancements/<uuid>.json`, not in the player file, so they travel as a separate payload in a separate table (`player_advancements`, own revision counter, same lease and compare-and-set). Only meaningful while `enabled` is `true` |
 
 What is deliberately **not** synchronised: position, rotation, dimension and portal cooldown (the proxy places
 the player), game mode (the destination's own mode wins), vehicles and passengers (entity transport is a separate
@@ -497,6 +501,63 @@ time:
 Phase 1 synchronises the clock's tick count only. Weather (rain/thunder) and the clock's rate/pause state are not
 synchronised. See [plan-time-sync.md](plan-time-sync.md) for the design, including why the proxy cannot simply ask
 the authority for its time whenever it wants to (the bridge only exists while a player is on a backend).
+
+---
+
+## `containment`
+
+Backends only. **On by default**, because it is a safety invariant of the region model rather than an optional
+extra: a backend must never let the outside of its own rectangle become real, or it would generate and write
+chunks another server also claims. With containment on, a backend:
+
+* refuses to spawn or load any non-player entity outside its region (no mobs past the border), rubber-bands
+  dropped items back inside, and discards anything else that ends up outside;
+* cancels block breaks, block uses and block attacks outside the region, and also cancels placing a block
+  item whose target block would land outside (clicking an inside block that faces the border);
+* teleports a player back every tick if they get more than `max-overshoot-blocks` past the border — even under
+  lag, a lost connection cannot strand them deep in another server's territory;
+* shrinks the chunk-cache radius of players near the border, so their client does not keep the world outside
+  the region loaded.
+
+```yaml
+containment:
+  enabled: true
+  max-overshoot-blocks: 2
+  border-proximity-blocks: 48
+  near-border-chunk-radius: 3
+  entity-sweep-interval-ticks: 20
+  entity-sweep-shell-blocks: 64
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Master switch. `false` disables every check above (a validation report says so loudly) — only sensible while debugging |
+| `max-overshoot-blocks` | 0–64 | `2` | How far past its own border a player may ever be, in blocks. The validator raises `CONTAINMENT_OVERSHOOT_BELOW_MARGIN` if this is below `transfer.boundary-margin-blocks`, because the clamp would then pin a player at the border before the boundary transfer could ever fire |
+| `border-proximity-blocks` | 0–512 | `48` | How close to the border a player must be before their chunk radius is shrunk |
+| `near-border-chunk-radius` | 1–32 | `3` | The chunk-cache radius sent to a near-border player. Vanilla's default view distance is typically 10, so this keeps roughly a 7-chunk strip of the neighbouring server from being loaded on the client |
+| `entity-sweep-interval-ticks` | 0–1200 | `20` | How often the shell just outside the region is swept for entities. `0` disables the sweep (spawn/load prevention still applies) |
+| `entity-sweep-shell-blocks` | 1–256 | `64` | How far outside the region the sweep reaches, in blocks |
+
+Containment runs even when transfers are disabled — exactly then, in fact, because that is when nothing else
+would stop a player from walking into the neighbour's chunks.
+
+---
+
+## `chat`
+
+Off by default. When enabled, a chat message sent on one backend is relayed through the proxy to every other
+backend, where it is shown as an unsigned system line `<name> message`. Signatures are never forwarded, so a
+relayed line can always be told apart from the sender's own signed chat, and a relayed line is never relayed
+again. The [`bridge`](#bridge) must be enabled.
+
+```yaml
+chat:
+  enabled: false
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Master switch. `false` keeps chat local to each backend, as before |
 
 ---
 

@@ -134,6 +134,13 @@ proxy:
   # which is the choice for a network that must never have a reachable gap.
   disconnect-unrouted-players: false
 
+  # Send a player straight to the backend they last played on at login, instead
+  # of the default initial server (which would load chunks around their logout
+  # position on a server they are immediately moved away from). The memory is
+  # in-process only: after a proxy restart the first login of each player falls
+  # back to the default behaviour.
+  remember-last-server: true
+
 # -----------------------------------------------------------------------------
 #  Backend transfer behaviour (ignored by the proxy)
 # -----------------------------------------------------------------------------
@@ -275,6 +282,12 @@ border-particles:
 #   # How long the proxy waits for the leaving server to save the player before
 #   # refusing the transfer, in seconds. Must stay below transfer.max-pending-seconds.
 #   flush-timeout-seconds: 10
+#
+#   # Also synchronise advancement progress. Advancements live in the per-player
+#   # file world/players/advancements/<uuid>.json, not in the player data, so they
+#   # travel as a separate payload in their own table, under the same lease and
+#   # compare-and-set rule. true by default; does nothing while enabled is false.
+#   sync-advancements: true
 
 # -----------------------------------------------------------------------------
 #  World time synchronisation (optional, OFF by default)
@@ -314,6 +327,55 @@ border-particles:
 #   # A correction that moves a backend's clock by more than this many ticks is
 #   # logged at warning level. 0 logs every correction.
 #   log-divergence-ticks: 20
+
+# -----------------------------------------------------------------------------
+#  Hard region containment (backends only; ON by default)
+# -----------------------------------------------------------------------------
+#
+# A backend never lets the outside of its own rectangle become real: no mobs
+# spawn or load past the border, no blocks can be broken, used or placed
+# there, dropped items are rubber-banded back inside, and a player can never
+# be more than max-overshoot-blocks past the border even under lag. Players
+# near the border also get a shrunk chunk radius, so their client does not
+# load the neighbouring server's world.
+#
+# This is a safety invariant of the region model, so it is on by default and
+# runs even when transfers are disabled. Set enabled: false only while
+# debugging; the startup report says so loudly when it is off.
+#
+# containment:
+#   enabled: true
+#
+#   # How far past its own border a player may ever be, in blocks. Must be at
+#   # least transfer.boundary-margin-blocks, otherwise the clamp would pin a
+#   # player at the border before the boundary transfer could ever fire (the
+#   # validator reports CONTAINMENT_OVERSHOOT_BELOW_MARGIN in that case).
+#   max-overshoot-blocks: 2
+#
+#   # How close to the border a player must be before their chunk-cache radius
+#   # is shrunk, in blocks.
+#   border-proximity-blocks: 48
+#
+#   # The chunk-cache radius sent to a near-border player (1-32 chunks).
+#   near-border-chunk-radius: 3
+#
+#   # How often the shell just outside the region is swept for entities, in
+#   # ticks. 0 disables the sweep; spawn/load prevention still applies.
+#   entity-sweep-interval-ticks: 20
+#
+#   # How far outside the region the sweep reaches, in blocks.
+#   entity-sweep-shell-blocks: 64
+
+# -----------------------------------------------------------------------------
+#  Cross-server chat (OFF by default; needs the bridge)
+# -----------------------------------------------------------------------------
+#
+# A chat message sent on one backend is relayed through the proxy to every
+# other backend, where it is shown as an unsigned '<name> message' line.
+# Signatures are never forwarded, and a relayed line is never relayed again.
+#
+# chat:
+#   enabled: false
 
 # -----------------------------------------------------------------------------
 #  This instance (backends only; the proxy ignores it)
