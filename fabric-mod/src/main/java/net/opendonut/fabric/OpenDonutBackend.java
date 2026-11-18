@@ -1244,6 +1244,21 @@ public final class OpenDonutBackend implements BackendBridge.Listener {
 		return config;
 	}
 
+	/** @return the containment guard, or empty when {@code containment.enabled} is false */
+	public Optional<RegionContainment> containment() {
+		return Optional.ofNullable(containment);
+	}
+
+	/** @return the advancement synchroniser, or empty when it is not active */
+	public Optional<AdvancementSync> advancementSync() {
+		return Optional.ofNullable(advancementSync);
+	}
+
+	/** @return the chat relay, or empty when {@code chat.enabled} is false */
+	public Optional<ChatSync> chatSync() {
+		return Optional.ofNullable(chatSync);
+	}
+
 	/** @return the entry of the configuration that describes this server */
 	public ServerDefinition self() {
 		return self;

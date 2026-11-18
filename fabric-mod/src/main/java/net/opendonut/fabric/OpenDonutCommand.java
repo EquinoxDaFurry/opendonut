@@ -174,6 +174,16 @@ final class OpenDonutCommand {
 		send(context, "time: " + active.config().time().describe());
 		send(context, "  this backend: "
 				+ (active.worldTimeSync() == null ? "sync is not active" : active.worldTimeSync().describe()));
+		send(context, "containment: " + active.config().containment().describe());
+		send(context, "  this backend: "
+				+ active.containment().map(RegionContainment::describe).orElse("containment is DISABLED"));
+		send(context, "advancements: "
+				+ (active.config().playerData().syncAdvancements() ? "synced" : "local only"));
+		send(context, "  this backend: "
+				+ active.advancementSync().map(AdvancementSync::describe).orElse("sync is not active"));
+		send(context, "chat: " + active.config().chat().describe());
+		send(context, "  this backend: "
+				+ active.chatSync().map(ChatSync::describe).orElse("relay is not active"));
 		return 1;
 	}
 
