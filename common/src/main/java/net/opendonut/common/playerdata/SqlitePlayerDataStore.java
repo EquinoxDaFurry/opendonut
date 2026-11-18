@@ -19,7 +19,7 @@ import java.util.UUID;
  * or network reachability.
  *
  * <h2>Schema</h2>
- * Three tables, mirroring the design in {@code docs/plan-player-data-sync.md}:
+ * Four tables, mirroring the design in {@code docs/plan-player-data-sync.md}:
  * <ul>
  *   <li>{@code player_data} — the current snapshot per player, with its revision, the writing server's
  *       Minecraft data version, mod fingerprint, payload (the {@link SnapshotCodec} envelope, compressed),
@@ -27,7 +27,10 @@ import java.util.UUID;
  *   <li>{@code player_lease} — one row per player naming the server that may write, and when that right
  *       expires;</li>
  *   <li>{@code player_data_history} — the last {@code keep-history} snapshots per player, so "my items
- *       vanished" is a question with an answer.</li>
+ *       vanished" is a question with an answer;</li>
+ *   <li>{@code player_advancements} — the current advancement progress per player (the raw
+ *       {@code world/advancements/<uuid>.json} bytes) with its own revision counter, written under the
+ *       same lease as the snapshot.</li>
  * </ul>
  *
  * <h2>Concurrency</h2>
@@ -75,6 +78,13 @@ public final class SqlitePlayerDataStore implements PlayerDataStore {
 			);
 			CREATE INDEX IF NOT EXISTS player_data_history_player
 			    ON player_data_history (player_uuid, revision DESC);
+			CREATE TABLE IF NOT EXISTS player_advancements (
+			    player_uuid  TEXT PRIMARY KEY,
+			    revision     INTEGER NOT NULL DEFAULT 0,
+			    payload      BLOB NOT NULL,
+			    updated_at   INTEGER NOT NULL,
+			    updated_by   TEXT NOT NULL
+			);
 			""";
 
 	private final Connection connection;
@@ -332,6 +342,82 @@ public final class SqlitePlayerDataStore implements PlayerDataStore {
 			return List.copyOf(result);
 		} catch (SQLException e) {
 			throw new IllegalStateException("could not read the history for " + playerId + ": " + e.getMessage(), e);
+		}
+	}
+
+	@Override
+	public synchronized Optional<StoredAdvancements> loadAdvancements(UUID playerId) {
+		try (PreparedStatement statement = connection.prepareStatement(
+				"SELECT revision, payload, updated_at, updated_by FROM player_advancements "
+						+ "WHERE player_uuid = ?")) {
+			statement.setString(1, playerId.toString());
+			try (ResultSet rows = statement.executeQuery()) {
+				if (!rows.next()) {
+					return Optional.empty();
+				}
+				return Optional.of(new StoredAdvancements(rows.getLong("revision"), rows.getBytes("payload"),
+						rows.getLong("updated_at"), rows.getString("updated_by")));
+			}
+		} catch (SQLException e) {
+			throw new IllegalStateException("could not read the advancements for " + playerId + ": "
+					+ e.getMessage(), e);
+		}
+	}
+
+	@Override
+	public synchronized SaveOutcome saveAdvancements(UUID playerId, long baseRevision, byte[] payload,
+			String serverId, long nowMillis) {
+		boolean previousAutoCommit;
+		try {
+			previousAutoCommit = connection.getAutoCommit();
+			connection.setAutoCommit(false);
+			try {
+				long currentRevision;
+				try (PreparedStatement statement = connection.prepareStatement(
+						"SELECT revision FROM player_advancements WHERE player_uuid = ?")) {
+					statement.setString(1, playerId.toString());
+					try (ResultSet rows = statement.executeQuery()) {
+						currentRevision = rows.next() ? rows.getLong("revision") : 0L;
+					}
+				}
+
+				if (currentRevision != baseRevision) {
+					connection.rollback();
+					return SaveOutcome.refused(currentRevision, "the store holds revision " + currentRevision
+							+ " but the writer was based on " + baseRevision
+							+ "; the advancement payload it produced is stale and was not applied");
+				}
+
+				long newRevision = currentRevision + 1;
+				try (PreparedStatement statement = connection.prepareStatement(
+						"INSERT INTO player_advancements (player_uuid, revision, payload, updated_at, updated_by)"
+								+ " VALUES (?, ?, ?, ?, ?)"
+								+ " ON CONFLICT(player_uuid) DO UPDATE SET revision = excluded.revision,"
+								+ " payload = excluded.payload, updated_at = excluded.updated_at,"
+								+ " updated_by = excluded.updated_by")) {
+					statement.setString(1, playerId.toString());
+					statement.setLong(2, newRevision);
+					statement.setBytes(3, payload);
+					statement.setLong(4, nowMillis);
+					statement.setString(5, serverId);
+					statement.executeUpdate();
+				}
+
+				connection.commit();
+				return SaveOutcome.accepted(newRevision);
+			} catch (SQLException | RuntimeException e) {
+				connection.rollback();
+				throw new IllegalStateException("could not store the advancements for " + playerId + ": "
+						+ e.getMessage(), e);
+			}
+		} catch (SQLException e) {
+			throw new IllegalStateException("could not configure the transaction: " + e.getMessage(), e);
+		} finally {
+			try {
+				connection.setAutoCommit(true);
+			} catch (SQLException e) {
+				throw new IllegalStateException("could not restore auto-commit: " + e.getMessage(), e);
+			}
 		}
 	}
 

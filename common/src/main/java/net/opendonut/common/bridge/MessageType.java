@@ -156,7 +156,58 @@ public enum MessageType {
 	 * the arrival level, so the far side of a boundary-straddling portal exists there, and sets the arriving
 	 * player's portal cooldown so they are not immediately teleported back through it.
 	 */
-	PLACE_PORTAL(16);
+	PLACE_PORTAL(16),
+
+	/**
+	 * Backend to proxy. "Send me the stored advancement progress for player X."
+	 *
+	 * <p>Sent on the player's own connection right after the {@code PLAYER_DATA_LOAD_REQUEST} for the same
+	 * join. Advancements live in a per-player JSON file in each backend's world folder, not in the player
+	 * data, so they travel as a separate blob. An old build refuses this id cleanly and simply keeps its
+	 * local copy of the player's advancements, as before.
+	 */
+	ADVANCEMENTS_LOAD_REQUEST(17),
+
+	/**
+	 * Proxy to backend. "Here is the stored advancement progress for player X."
+	 *
+	 * <p>The payload is the raw bytes of the source backend's {@code world/advancements/<uuid>.json}; the
+	 * destination writes them to its own copy of that file and reloads. {@code present} false means the store
+	 * has nothing, and the destination keeps its local file.
+	 */
+	ADVANCEMENTS_LOAD_RESPONSE(18),
+
+	/**
+	 * Backend to proxy. "Store this advancement progress for player X (compare-and-set on the revision)."
+	 *
+	 * <p>Sent whenever a backend saves a player — periodically, on disconnect, and on the flush before a
+	 * transfer — right after the matching {@code PLAYER_DATA_SAVE_REQUEST}.
+	 */
+	ADVANCEMENTS_SAVE_REQUEST(19),
+
+	/**
+	 * Proxy to backend. "Advancement progress stored (or refused) for player X."
+	 */
+	ADVANCEMENTS_SAVE_RESULT(20),
+
+	/**
+	 * Backend to proxy. "Player X said this in chat; show it on the other backends."
+	 *
+	 * <p>The content is the plain text of the message (the signed chat body), the sender's name, and nothing
+	 * else — the proxy never forwards signatures, so a relayed message is always displayed as an unsigned
+	 * relay, never forged as the sender's signed chat. An old build refuses this id cleanly and chat simply
+	 * stays local, as before.
+	 */
+	CHAT_RELAY(21),
+
+	/**
+	 * Proxy to backend. "Display this chat message from player X on your server."
+	 *
+	 * <p>Sent to every backend except the one the message came from, so it is never shown twice on the
+	 * source. The receiving backend shows it to its local players as a system-style relay and must not send
+	 * it back to the proxy.
+	 */
+	CHAT_BROADCAST(22);
 
 	private final int wireId;
 

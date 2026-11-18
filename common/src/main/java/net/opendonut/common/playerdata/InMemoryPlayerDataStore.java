@@ -30,11 +30,15 @@ public final class InMemoryPlayerDataStore implements PlayerDataStore {
 	private record Entry(long revision, PlayerDataSnapshot snapshot, long updatedAtMillis, String updatedBy) {
 	}
 
+	private record AdvancementEntry(long revision, byte[] payload, long updatedAtMillis, String updatedBy) {
+	}
+
 	private record Lease(String ownerServer, long revision, long expiresAtMillis) {
 	}
 
 	private final Object lock = new Object();
 	private final Map<UUID, Entry> snapshots = new HashMap<>();
+	private final Map<UUID, AdvancementEntry> advancements = new HashMap<>();
 	private final Map<UUID, Lease> leases = new HashMap<>();
 	private final Map<UUID, Deque<Entry>> history = new HashMap<>();
 
@@ -141,6 +145,34 @@ public final class InMemoryPlayerDataStore implements PlayerDataStore {
 	}
 
 	@Override
+	public Optional<StoredAdvancements> loadAdvancements(UUID playerId) {
+		synchronized (lock) {
+			return Optional.ofNullable(advancements.get(playerId)).map(entry -> new StoredAdvancements(
+					entry.revision(), entry.payload().clone(), entry.updatedAtMillis(), entry.updatedBy()));
+		}
+	}
+
+	@Override
+	public SaveOutcome saveAdvancements(UUID playerId, long baseRevision, byte[] payload, String serverId,
+			long nowMillis) {
+		synchronized (lock) {
+			AdvancementEntry current = advancements.get(playerId);
+			long currentRevision = current == null ? 0L : current.revision();
+
+			if (currentRevision != baseRevision) {
+				return SaveOutcome.refused(currentRevision, "the store holds revision " + currentRevision
+						+ " but the writer was based on " + baseRevision
+						+ "; the advancement payload it produced is stale and was not applied");
+			}
+
+			long newRevision = currentRevision + 1;
+			advancements.put(playerId,
+					new AdvancementEntry(newRevision, payload.clone(), nowMillis, serverId));
+			return SaveOutcome.accepted(newRevision);
+		}
+	}
+
+	@Override
 	public String describe() {
 		synchronized (lock) {
 			int playersWithSnapshots = snapshots.size();
@@ -160,6 +192,7 @@ public final class InMemoryPlayerDataStore implements PlayerDataStore {
 	public void close() {
 		synchronized (lock) {
 			snapshots.clear();
+			advancements.clear();
 			leases.clear();
 			history.clear();
 		}

@@ -453,6 +453,33 @@ public final class BridgeCodec {
 				}
 				case BridgeMessage.TransferPortal portal -> writePortal(out, portal.playerId(), portal.portal());
 				case BridgeMessage.PlacePortal portal -> writePortal(out, portal.playerId(), portal.portal());
+				case BridgeMessage.AdvancementsLoadRequest request -> {
+					writeUuid(out, request.playerId());
+					out.writeUTF(request.serverId());
+				}
+				case BridgeMessage.AdvancementsLoadResponse response -> {
+					writeUuid(out, response.playerId());
+					out.writeBoolean(response.present());
+					out.writeLong(response.revision());
+					writeByteArray(out, response.payload());
+					out.writeUTF(response.detail());
+				}
+				case BridgeMessage.AdvancementsSaveRequest request -> {
+					writeUuid(out, request.playerId());
+					out.writeUTF(request.serverId());
+					out.writeLong(request.baseRevision());
+					writeByteArray(out, request.payload());
+				}
+				case BridgeMessage.AdvancementsSaveResult result -> {
+					writeUuid(out, result.playerId());
+					out.writeBoolean(result.accepted());
+					out.writeLong(result.revision());
+					out.writeUTF(result.detail());
+				}
+				case BridgeMessage.ChatRelay relay -> writeChat(out, relay.senderId(), relay.senderName(),
+						relay.content());
+				case BridgeMessage.ChatBroadcast broadcast -> writeChat(out, broadcast.senderId(),
+						broadcast.senderName(), broadcast.content());
 			}
 			out.flush();
 			return buffer.toByteArray();
@@ -505,6 +532,18 @@ public final class BridgeCodec {
 					readUuid(in), in.readUTF());
 			case TRANSFER_PORTAL -> new BridgeMessage.TransferPortal(readUuid(in), readPortal(in));
 			case PLACE_PORTAL -> new BridgeMessage.PlacePortal(readUuid(in), readPortal(in));
+			case ADVANCEMENTS_LOAD_REQUEST -> new BridgeMessage.AdvancementsLoadRequest(
+					readUuid(in), in.readUTF());
+			case ADVANCEMENTS_LOAD_RESPONSE -> new BridgeMessage.AdvancementsLoadResponse(
+					readUuid(in), in.readBoolean(), in.readLong(), readByteArray(in), in.readUTF());
+			case ADVANCEMENTS_SAVE_REQUEST -> new BridgeMessage.AdvancementsSaveRequest(
+					readUuid(in), in.readUTF(), in.readLong(), readByteArray(in));
+			case ADVANCEMENTS_SAVE_RESULT -> new BridgeMessage.AdvancementsSaveResult(
+					readUuid(in), in.readBoolean(), in.readLong(), in.readUTF());
+			case CHAT_RELAY -> new BridgeMessage.ChatRelay(
+					readUuid(in), in.readUTF(), readChatContent(in));
+			case CHAT_BROADCAST -> new BridgeMessage.ChatBroadcast(
+					readUuid(in), in.readUTF(), readChatContent(in));
 		};
 	}
 
@@ -617,6 +656,44 @@ public final class BridgeCodec {
 			blocks.add(new BridgeMessage.BlockEntry(in.readInt(), in.readInt(), in.readInt(), readByteArray(in)));
 		}
 		return new BridgeMessage.PortalBlocks(dimension, originX, originY, originZ, blocks);
+	}
+
+	/**
+	 * The most characters a chat relay may carry. Vanilla chat is at most 256 characters; the cap exists so a
+	 * hostile or buggy frame cannot push a huge string through the (already bounded) 64 KiB payload.
+	 */
+	private static final int MAX_CHAT_CHARS = 4096;
+
+	/**
+	 * Writes a chat relay/broadcast body: sender id, sender name, content.
+	 *
+	 * @param out the stream
+	 * @param senderId the sender
+	 * @param senderName the sender's display name
+	 * @param content the plain chat text
+	 * @throws IOException if the stream fails
+	 */
+	private static void writeChat(
+			DataOutputStream out, UUID senderId, String senderName, String content) throws IOException {
+		writeUuid(out, senderId);
+		out.writeUTF(senderName);
+		out.writeUTF(content);
+	}
+
+	/**
+	 * Reads the chat content written by {@link #writeChat}, refusing absurd lengths.
+	 *
+	 * @param in the stream positioned at the content
+	 * @return the content
+	 * @throws IOException if the stream fails or the content is too long
+	 */
+	private static String readChatContent(DataInputStream in) throws IOException {
+		String content = in.readUTF();
+		if (content.length() > MAX_CHAT_CHARS) {
+			throw new IOException("chat content of " + content.length() + " characters exceeds the "
+					+ MAX_CHAT_CHARS + " character limit");
+		}
+		return content;
 	}
 
 	/**

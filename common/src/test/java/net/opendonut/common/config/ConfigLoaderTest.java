@@ -92,6 +92,12 @@ class ConfigLoaderTest {
 			assertEquals(2, config.transfer().boundaryMarginBlocks());
 			assertEquals(40, config.transfer().joinGraceTicks());
 			assertEquals(TransferFailurePolicy.REVERT, config.transfer().onTransferFailure());
+			assertTrue(config.proxy().rememberLastServer(), "login routing remembers the last server by default");
+			assertTrue(config.containment().enabled(), "containment is a safety invariant and on by default");
+			assertEquals(2, config.containment().maxOvershootBlocks());
+			assertFalse(config.chat().enabled(), "chat relay is opt-in like the other cross-server features");
+			assertTrue(config.playerData().syncAdvancements());
+			assertFalse(config.playerData().enabled());
 			assertEquals(UnassignedAreaPolicy.ALLOW, config.transfer().unassignedAreaPolicy());
 			assertTrue(config.backend().autoDetect(), "no backend.server-id means auto-detection");
 		}
@@ -112,6 +118,7 @@ class ConfigLoaderTest {
 					  auto-register-backends: false
 					  require-backend-hello: false
 					  disconnect-unrouted-players: true
+					  remember-last-server: false
 					transfer:
 					  boundary-margin-blocks: 8
 					  join-grace-ticks: 0
@@ -119,6 +126,10 @@ class ConfigLoaderTest {
 					  max-pending-seconds: 2
 					  on-transfer-failure: log-only
 					  unassigned-area-policy: return
+					containment:
+					  max-overshoot-blocks: 8
+					chat:
+					  enabled: true
 					backend:
 					  server-id: east
 					""";
@@ -137,6 +148,10 @@ class ConfigLoaderTest {
 			assertEquals(8, config.transfer().boundaryMarginBlocks());
 			assertEquals(TransferFailurePolicy.LOG_ONLY, config.transfer().onTransferFailure());
 			assertEquals(UnassignedAreaPolicy.RETURN, config.transfer().unassignedAreaPolicy());
+			assertFalse(config.proxy().rememberLastServer());
+			assertEquals(8, config.containment().maxOvershootBlocks());
+			assertTrue(config.containment().enabled(), "containment is on unless explicitly disabled");
+			assertTrue(config.chat().enabled());
 			assertEquals("east", config.backend().serverId().orElseThrow());
 		}
 
@@ -358,6 +373,46 @@ class ConfigLoaderTest {
 			assertTrue(settings.enabled());
 			assertEquals("east", settings.explicitAuthority());
 			assertEquals(TimeSettings.DEFAULT_CLOCK, settings.clock());
+		}
+
+		@Test
+		@DisplayName("a containment overshoot below the boundary margin is a CONTAINMENT_OVERSHOOT_BELOW_MARGIN error")
+		void containmentOvershootBelowMargin() {
+			ConfigLoadResult result = load(VALID + """
+					transfer:
+					  boundary-margin-blocks: 8
+					containment:
+					  max-overshoot-blocks: 2
+					""");
+			assertTrue(result.result().contains(IssueCode.CONTAINMENT_OVERSHOOT_BELOW_MARGIN),
+					() -> "expected a CONTAINMENT_OVERSHOOT_BELOW_MARGIN finding but got:\n"
+							+ result.result().formatWithSummary());
+			assertFalse(result.isUsable());
+		}
+
+		@Test
+		@DisplayName("containment keys are read when present and default when absent")
+		void containmentSection() {
+			OpenDonutConfig defaults = load(VALID).config().orElseThrow();
+			assertTrue(defaults.containment().enabled());
+			assertEquals(2, defaults.containment().maxOvershootBlocks());
+			assertEquals(48, defaults.containment().borderProximityBlocks());
+			assertEquals(3, defaults.containment().nearBorderChunkRadius());
+			assertEquals(20, defaults.containment().entitySweepIntervalTicks());
+			assertEquals(64, defaults.containment().entitySweepShellBlocks());
+
+			OpenDonutConfig custom = load(VALID + """
+					containment:
+					  enabled: false
+					  max-overshoot-blocks: 5
+					  near-border-chunk-radius: 2
+					chat:
+					  enabled: true
+					""").config().orElseThrow();
+			assertFalse(custom.containment().enabled());
+			assertEquals(5, custom.containment().maxOvershootBlocks());
+			assertEquals(2, custom.containment().nearBorderChunkRadius());
+			assertTrue(custom.chat().enabled());
 		}
 
 		@Test

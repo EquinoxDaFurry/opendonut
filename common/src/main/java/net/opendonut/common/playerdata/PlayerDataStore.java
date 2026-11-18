@@ -47,6 +47,18 @@ public interface PlayerDataStore extends AutoCloseable {
 	}
 
 	/**
+	 * Advancement progress as the store holds it: the raw bytes of the player's
+	 * {@code world/advancements/<uuid>.json} file.
+	 *
+	 * @param revision the revision this payload was stored as; a writer must quote it as its base
+	 * @param payload the raw advancements JSON bytes
+	 * @param updatedAtMillis when it was written
+	 * @param updatedBy which server wrote it
+	 */
+	record StoredAdvancements(long revision, byte[] payload, long updatedAtMillis, String updatedBy) {
+	}
+
+	/**
 	 * The outcome of a write.
 	 *
 	 * @param accepted whether the snapshot was stored
@@ -167,6 +179,31 @@ public interface PlayerDataStore extends AutoCloseable {
 	 * @return the history, possibly empty
 	 */
 	List<StoredSnapshot> history(UUID playerId, int limit);
+
+	/**
+	 * Reads the stored advancement progress for a player.
+	 *
+	 * <p>Advancements live in their own per-player file on each backend, not in the player data, so the
+	 * store keeps them in their own table with their own revision counter; the lease on the player data is
+	 * what serialises writers, the same as for snapshots.
+	 *
+	 * @param playerId the player
+	 * @return the payload, or empty when nothing has ever been stored for them
+	 */
+	Optional<StoredAdvancements> loadAdvancements(UUID playerId);
+
+	/**
+	 * Writes advancement progress, if and only if the store still holds the revision the writer based it on.
+	 *
+	 * @param playerId the player
+	 * @param baseRevision the revision the caller read (0 for a player with nothing stored)
+	 * @param payload the raw advancements JSON bytes
+	 * @param serverId the server writing, recorded for the log
+	 * @param nowMillis the current time
+	 * @return the outcome
+	 */
+	SaveOutcome saveAdvancements(UUID playerId, long baseRevision, byte[] payload, String serverId,
+			long nowMillis);
 
 	/**
 	 * A one-line description of the store, for the status command.

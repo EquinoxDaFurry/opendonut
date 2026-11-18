@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import net.opendonut.common.model.BorderParticleSettings;
+import net.opendonut.common.model.ContainmentSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.RegionBounds;
 import net.opendonut.common.model.ServerDefinition;
@@ -73,6 +74,7 @@ public final class ConfigValidator {
 		validateCoverage(config, options);
 		validateIdentity(config);
 		validateTime(config);
+		validateContainment(config);
 		validateAdvisories(config);
 		return issues;
 	}
@@ -335,6 +337,38 @@ public final class ConfigValidator {
 		}
 		issues.add(IssueCode.DERIVED_VALUE, "time", sourceMap.line("time"),
 				"world time sync: " + time.describe() + "; the authority is '" + wanted + "'");
+	}
+
+	/**
+	 * Validates the {@code containment} section against {@code transfer}.
+	 *
+	 * <p>The one cross-dependency that matters: the hard overshoot clamp must allow at least the boundary
+	 * margin, otherwise a player is clamped before the margin is reached and the boundary transfer can never
+	 * fire — they would be pinned at the border forever.
+	 *
+	 * @param config the configuration to check
+	 */
+	private void validateContainment(OpenDonutConfig config) {
+		ContainmentSettings containment = config.containment();
+		if (containment.enabled()) {
+			int margin = Math.max(1, config.transfer().boundaryMarginBlocks());
+			if (containment.maxOvershootBlocks() < margin) {
+				issues.add(IssueCode.CONTAINMENT_OVERSHOOT_BELOW_MARGIN, "containment.max-overshoot-blocks",
+						sourceMap.line("containment"),
+						"containment.max-overshoot-blocks is " + containment.maxOvershootBlocks()
+								+ " but transfer.boundary-margin-blocks is " + margin
+								+ ": the clamp would pin a player at the border before the boundary "
+								+ "transfer could ever fire. Raise max-overshoot-blocks to at least "
+								+ margin + ".");
+			}
+			issues.add(IssueCode.DERIVED_VALUE, "containment", sourceMap.line("containment"),
+					"region containment: " + containment.describe());
+		} else {
+			issues.add(IssueCode.DERIVED_VALUE, "containment", sourceMap.line("containment"),
+					"region containment is DISABLED: players can stand outside their region and blocks can be "
+							+ "edited there, and this server will generate chunks another server also "
+							+ "claims");
+		}
 	}
 
 	private void validateAdvisories(OpenDonutConfig config) {

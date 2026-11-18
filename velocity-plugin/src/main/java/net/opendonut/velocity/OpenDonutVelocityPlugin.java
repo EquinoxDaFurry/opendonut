@@ -18,6 +18,7 @@ import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
+import com.velocitypowered.api.event.player.PlayerChooseInitialServerEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
@@ -166,6 +167,12 @@ public final class OpenDonutVelocityPlugin {
 	 * player out for a whole lease period.
 	 */
 	private final Map<UUID, String> leaseHolders = new ConcurrentHashMap<>();
+
+	/**
+	 * Which backend each player was last connected to, so logins go straight there instead of bouncing
+	 * through the default initial server and loading chunks on a server the player is moved away from.
+	 */
+	private final LastServerRegistry lastServers = new LastServerRegistry();
 
 	/**
 	 * Creates the plugin. Velocity injects everything the plugin needs.
@@ -613,7 +620,104 @@ public final class OpenDonutVelocityPlugin {
 			case BridgeMessage.PlacePortal portal -> logger.warn(
 					"OpenDonut: backend '{}' sent a PLACE_PORTAL; only the proxy may replicate portals. "
 							+ "Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.AdvancementsLoadRequest request ->
+					handleAdvancementsLoadRequest(connection, request);
+			case BridgeMessage.AdvancementsSaveRequest request ->
+					handleAdvancementsSaveRequest(connection, request);
+			case BridgeMessage.ChatRelay relay -> handleChatRelay(connection, relay);
+			case BridgeMessage.AdvancementsLoadResponse response -> logger.warn(
+					"OpenDonut: backend '{}' sent an ADVANCEMENTS_LOAD_RESPONSE; only the proxy answers "
+							+ "load requests. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.AdvancementsSaveResult result -> logger.warn(
+					"OpenDonut: backend '{}' sent an ADVANCEMENTS_SAVE_RESULT; only the proxy reports save "
+							+ "outcomes. Ignoring it.", connection.getServerInfo().getName());
+			case BridgeMessage.ChatBroadcast broadcast -> logger.warn(
+					"OpenDonut: backend '{}' sent a CHAT_BROADCAST; only the proxy relays chat. Ignoring it.",
+					connection.getServerInfo().getName());
 		}
+	}
+
+	/**
+	 * Handles a backend asking for a player's stored advancement progress.
+	 *
+	 * @param connection the backend connection the request arrived through
+	 * @param request the request
+	 */
+	private void handleAdvancementsLoadRequest(
+			ServerConnection connection, BridgeMessage.AdvancementsLoadRequest request) {
+		if (playerData == null || !config.playerData().syncAdvancements()) {
+			// No store or advancements sync off: saying nothing leaves the backend's local file in place,
+			// which is exactly the behaviour of an older proxy.
+			return;
+		}
+		String serverName = connection.getServerInfo().getName();
+		PlayerDataCoordinator.AdvancementsLoadOutcome outcome = playerData.handleAdvancementsLoadRequest(
+				request.playerId(), serverName, System.currentTimeMillis());
+		if (outcome.present()) {
+			logger.info("OpenDonut: sent the stored advancements of {} to '{}' ({})", request.playerId(),
+					serverName, outcome.detail());
+		}
+		sendTo(connection, new BridgeMessage.AdvancementsLoadResponse(
+				request.playerId(), outcome.present(), outcome.revision(), outcome.payload(), outcome.detail()));
+	}
+
+	/**
+	 * Handles a backend saving a player's advancement progress.
+	 *
+	 * @param connection the backend connection the request arrived through
+	 * @param request the request
+	 */
+	private void handleAdvancementsSaveRequest(
+			ServerConnection connection, BridgeMessage.AdvancementsSaveRequest request) {
+		if (playerData == null || !config.playerData().syncAdvancements()) {
+			return;
+		}
+		String serverName = connection.getServerInfo().getName();
+		if (!request.serverId().equals(serverName)) {
+			logger.warn("OpenDonut: backend '{}' tried to save advancements as '{}'; the proxy's name for "
+					+ "that connection wins", serverName, request.serverId());
+		}
+		PlayerDataCoordinator.SaveOutcome outcome = playerData.handleAdvancementsSaveRequest(
+				request.playerId(), serverName, request.baseRevision(), request.payload(),
+				System.currentTimeMillis());
+		sendTo(connection, new BridgeMessage.AdvancementsSaveResult(
+				request.playerId(), outcome.accepted(), outcome.revision(), outcome.detail()));
+		if (outcome.accepted()) {
+			logger.debug("OpenDonut: stored the advancements of {} from '{}' ({})", request.playerId(),
+					serverName, outcome.detail());
+		} else {
+			logger.warn("OpenDonut: refused the advancements of {} from '{}': {}", request.playerId(),
+					serverName, outcome.detail());
+		}
+	}
+
+	/**
+	 * Relays a chat message from one backend to every other backend that currently has players.
+	 *
+	 * <p>The source is never sent the broadcast back, so the message is shown exactly once per server. The
+	 * receiving backends display it as an unsigned relay and must not relay it again.
+	 *
+	 * @param connection the backend connection the relay arrived through
+	 * @param relay the relay
+	 */
+	private void handleChatRelay(ServerConnection connection, BridgeMessage.ChatRelay relay) {
+		if (!config.chat().enabled()) {
+			return;
+		}
+		String sourceName = connection.getServerInfo().getName();
+		BridgeMessage.ChatBroadcast broadcast =
+				new BridgeMessage.ChatBroadcast(relay.senderId(), relay.senderName(), relay.content());
+		int sent = 0;
+		for (Player online : server.getAllPlayers()) {
+			Optional<ServerConnection> current = online.getCurrentServer();
+			if (current.isEmpty() || current.get().getServerInfo().getName().equals(sourceName)) {
+				continue;
+			}
+			sendTo(current.get(), broadcast);
+			sent++;
+		}
+		logger.info("OpenDonut: relayed chat from '{}' on '{}' to {} other backend(s)", relay.senderName(),
+				sourceName, sent);
 	}
 
 	/**
@@ -1096,12 +1200,51 @@ public final class OpenDonutVelocityPlugin {
 	 *
 	 * @param event the post-connect event
 	 */
+	/**
+	 * Sends a player straight to the backend they last played on, when there is one.
+	 *
+	 * <p>Velocity's default initial server is simply the first registered one, so without this a player who
+	 * logged off in the east would be connected to the west first — loading chunks around their logout
+	 * position there — and only then moved on. When the remembered server is registered and not refused by
+	 * the routing table, it becomes the initial server and no detour happens. The memory is in-process, so
+	 * after a proxy restart the first login falls back to the default.
+	 *
+	 * @param event the choose-initial-server event
+	 */
+	@Subscribe
+	public void onChooseInitialServer(PlayerChooseInitialServerEvent event) {
+		if (!active || config == null || !config.proxy().rememberLastServer()) {
+			return;
+		}
+		String remembered = lastServers.lookup(event.getPlayer().getUniqueId());
+		if (remembered == null) {
+			return;
+		}
+		Optional<RegisteredServer> target = server.getServer(remembered);
+		if (target.isEmpty()) {
+			return;
+		}
+		if (routing.admissionFor(remembered) == ProxyRoutingTable.Admission.REFUSED) {
+			logger.info("OpenDonut: not sending {} to '{}' for this login: that backend is refused ({})",
+					event.getPlayer().getUsername(), remembered, routing.refusalReason(remembered));
+			return;
+		}
+		event.setInitialServer(target.get());
+		logger.info("OpenDonut: sending {} straight to '{}', the server they last played on",
+				event.getPlayer().getUsername(), remembered);
+	}
+
 	@Subscribe
 	public void onServerPostConnect(ServerPostConnectEvent event) {
 		if (!active) {
 			return;
 		}
 		Player player = event.getPlayer();
+		// Remember where every player actually lands — including the initial connect, which is what makes
+		// the next login direct. A transfer's post-connect records the destination, which is equally right.
+		player.getCurrentServer()
+				.ifPresent(connection -> lastServers.remember(
+						player.getUniqueId(), connection.getServerInfo().getName()));
 		Optional<ProxyRoutingTable.PendingTransfer> maybeTransfer = routing.pending(player.getUniqueId());
 		if (maybeTransfer.isEmpty()) {
 			return;

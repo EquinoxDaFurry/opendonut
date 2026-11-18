@@ -39,6 +39,8 @@ public final class OpenDonutConfig {
 	private final BorderParticleSettings borderParticles;
 	private final PlayerDataSettings playerData;
 	private final TimeSettings time;
+	private final ContainmentSettings containment;
+	private final ChatSettings chat;
 
 	/**
 	 * The lazily built region index. {@code volatile} so that publishing it from whichever thread
@@ -65,6 +67,8 @@ public final class OpenDonutConfig {
 	 * @param borderParticles the cosmetic boundary wall
 	 * @param playerData cross-server player data synchronisation
 	 * @param time cross-server world clock synchronisation
+	 * @param containment hard region containment on backends
+	 * @param chat cross-server chat relay
 	 */
 	public OpenDonutConfig(
 			String sourceName,
@@ -77,7 +81,9 @@ public final class OpenDonutConfig {
 			BackendSettings backend,
 			BorderParticleSettings borderParticles,
 			PlayerDataSettings playerData,
-			TimeSettings time) {
+			TimeSettings time,
+			ContainmentSettings containment,
+			ChatSettings chat) {
 		this.sourceName = Objects.requireNonNull(sourceName, "sourceName");
 		this.world = Objects.requireNonNull(world, "world");
 		this.servers = List.copyOf(Objects.requireNonNull(servers, "servers"));
@@ -89,6 +95,8 @@ public final class OpenDonutConfig {
 		this.borderParticles = Objects.requireNonNull(borderParticles, "borderParticles");
 		this.playerData = Objects.requireNonNull(playerData, "playerData");
 		this.time = Objects.requireNonNull(time, "time");
+		this.containment = Objects.requireNonNull(containment, "containment");
+		this.chat = Objects.requireNonNull(chat, "chat");
 	}
 
 	/** @return the origin of this configuration, usually a file name */
@@ -144,6 +152,16 @@ public final class OpenDonutConfig {
 	/** @return the cross-server world clock synchronisation settings */
 	public TimeSettings time() {
 		return time;
+	}
+
+	/** @return the hard region containment settings (backends) */
+	public ContainmentSettings containment() {
+		return containment;
+	}
+
+	/** @return the cross-server chat relay settings */
+	public ChatSettings chat() {
+		return chat;
 	}
 
 	/** @return the world border */

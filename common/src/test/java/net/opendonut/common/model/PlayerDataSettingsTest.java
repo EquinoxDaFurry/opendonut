@@ -194,7 +194,7 @@ class PlayerDataSettingsTest {
 
 		PlayerDataSettings build() {
 			return new PlayerDataSettings(enabled, storage, file, syncIntervalSeconds, leaseSeconds, onFlushFailure,
-					scope, keepHistory, maxPayloadBytes, flushTimeoutSeconds);
+					scope, keepHistory, maxPayloadBytes, flushTimeoutSeconds, true);
 		}
 	}
 }

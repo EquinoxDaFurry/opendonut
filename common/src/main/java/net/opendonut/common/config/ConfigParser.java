@@ -14,6 +14,8 @@ import org.yaml.snakeyaml.nodes.SequenceNode;
 import net.opendonut.common.model.BackendSettings;
 import net.opendonut.common.model.BorderParticleSettings;
 import net.opendonut.common.model.BridgeSettings;
+import net.opendonut.common.model.ChatSettings;
+import net.opendonut.common.model.ContainmentSettings;
 import net.opendonut.common.model.OpenDonutConfig;
 import net.opendonut.common.model.PlayerDataSettings;
 import net.opendonut.common.model.ProxySettings;
@@ -53,7 +55,7 @@ final class ConfigParser {
 
 	private static final Set<String> ROOT_KEYS = Set.of(
 			"config-version", "world", "servers", "validation", "bridge", "proxy", "transfer", "backend",
-			"border-particles", "player-data", "time");
+			"border-particles", "player-data", "time", "containment", "chat");
 	private static final Set<String> WORLD_KEYS = Set.of("name", "seed", "border");
 	private static final Set<String> BORDER_KEYS = Set.of("center-x", "center-z", "size");
 	private static final Set<String> SERVER_KEYS = Set.of("id", "address", "bounds");
@@ -64,7 +66,7 @@ final class ConfigParser {
 			Set.of("enabled", "channel", "secret-file", "timestamp-tolerance-seconds");
 	private static final Set<String> PROXY_KEYS = Set.of(
 			"auto-register-backends", "require-backend-hello", "disconnect-unrouted-players",
-			"arrival-verification-timeout-seconds");
+			"arrival-verification-timeout-seconds", "remember-last-server");
 	private static final Set<String> TRANSFER_KEYS = Set.of(
 			"boundary-margin-blocks", "join-grace-ticks", "cooldown-seconds", "max-pending-seconds",
 			"on-transfer-failure", "unassigned-area-policy");
@@ -73,10 +75,14 @@ final class ConfigParser {
 			Set.of("enabled", "particle", "radius", "interval-ticks", "max-per-side");
 	private static final Set<String> PLAYER_DATA_KEYS = Set.of(
 			"enabled", "storage", "file", "sync-interval-seconds", "lease-seconds", "on-flush-failure",
-			"scope", "keep-history", "max-payload-bytes", "flush-timeout-seconds");
+			"scope", "keep-history", "max-payload-bytes", "flush-timeout-seconds", "sync-advancements");
 	private static final Set<String> TIME_KEYS = Set.of(
 			"enabled", "authority", "clock", "report-interval-seconds", "sync-interval-seconds",
 			"log-divergence-ticks");
+	private static final Set<String> CONTAINMENT_KEYS = Set.of(
+			"enabled", "max-overshoot-blocks", "border-proximity-blocks", "near-border-chunk-radius",
+			"entity-sweep-interval-ticks", "entity-sweep-shell-blocks");
+	private static final Set<String> CHAT_KEYS = Set.of("enabled");
 
 	private final ValidationResult.Collector issues;
 	private final YamlAccess yaml;
@@ -121,6 +127,8 @@ final class ConfigParser {
 				parseBorderParticles(rootEntries.get("border-particles"), policy);
 		PlayerDataSettings playerData = parsePlayerData(rootEntries.get("player-data"), policy);
 		TimeSettings time = parseTime(rootEntries.get("time"), policy);
+		ContainmentSettings containment = parseContainment(rootEntries.get("containment"), policy);
+		ChatSettings chat = parseChat(rootEntries.get("chat"), policy);
 
 		yaml.reportUnknownKeys(rootEntries, "", ROOT_KEYS, policy);
 
@@ -132,7 +140,7 @@ final class ConfigParser {
 
 		return Optional.of(new OpenDonutConfig(
 				sourceName, world, servers, validation, bridge, proxy, transfer, backend, borderParticles,
-				playerData, time));
+				playerData, time, containment, chat));
 	}
 
 	/**
@@ -392,10 +400,12 @@ final class ConfigParser {
 				settings.disconnectUnroutedPlayers());
 		Integer arrivalTimeout = yaml.readInt(entries, "arrival-verification-timeout-seconds", "proxy",
 				settings.arrivalVerificationTimeoutSeconds(), false);
+		Boolean rememberLastServer = yaml.readBoolean(entries, "remember-last-server", "proxy",
+				settings.rememberLastServer());
 		yaml.reportUnknownKeys(entries, "proxy", PROXY_KEYS, policy);
 
 		try {
-			return new ProxySettings(autoRegister, requireHello, disconnect, arrivalTimeout);
+			return new ProxySettings(autoRegister, requireHello, disconnect, arrivalTimeout, rememberLastServer);
 		} catch (IllegalArgumentException e) {
 			yaml.report(IssueCode.INVALID_VALUE, "proxy", YamlAccess.lineOf(mapping), e.getMessage());
 			return settings;
@@ -503,15 +513,83 @@ final class ConfigParser {
 				settings.maxPayloadBytes(), false);
 		Integer flushTimeout = yaml.readInt(entries, "flush-timeout-seconds", "player-data",
 				settings.flushTimeoutSeconds(), false);
+		Boolean syncAdvancements = yaml.readBoolean(entries, "sync-advancements", "player-data",
+				settings.syncAdvancements());
 		yaml.reportUnknownKeys(entries, "player-data", PLAYER_DATA_KEYS, policy);
 
 		try {
 			return new PlayerDataSettings(enabled, storage, file, syncInterval, leaseSeconds, onFlushFailure,
-					scope, keepHistory, maxPayloadBytes, flushTimeout);
+					scope, keepHistory, maxPayloadBytes, flushTimeout, syncAdvancements);
 		} catch (IllegalArgumentException e) {
 			yaml.report(IssueCode.INVALID_VALUE, "player-data", YamlAccess.lineOf(mapping), e.getMessage());
 			return settings;
 		}
+	}
+
+	/**
+	 * Parses the {@code containment} section.
+	 *
+	 * <p>Every key is optional and the section defaults to enabled: containment is a safety invariant of the
+	 * region model, not an add-on, so unlike {@code player-data} it is on unless explicitly turned off.
+	 *
+	 * @param node the section node, may be {@code null}
+	 * @param policy what to do with unrecognised keys
+	 * @return the settings
+	 */
+	private ContainmentSettings parseContainment(Node node, UnknownFieldPolicy policy) {
+		MappingNode mapping = yaml.asMapping(node, "containment", false);
+		ContainmentSettings settings = ContainmentSettings.DEFAULT;
+		if (mapping == null) {
+			return settings;
+		}
+		sourceMap.put("containment", YamlAccess.lineOf(node));
+		Map<String, Node> entries = yaml.entries(mapping, "containment");
+
+		Boolean enabled = yaml.readBoolean(entries, "enabled", "containment", settings.enabled());
+		Integer maxOvershoot = yaml.readInt(entries, "max-overshoot-blocks", "containment",
+				settings.maxOvershootBlocks(), false);
+		Integer proximity = yaml.readInt(entries, "border-proximity-blocks", "containment",
+				settings.borderProximityBlocks(), false);
+		Integer nearRadius = yaml.readInt(entries, "near-border-chunk-radius", "containment",
+				settings.nearBorderChunkRadius(), false);
+		Integer sweepInterval = yaml.readInt(entries, "entity-sweep-interval-ticks", "containment",
+				settings.entitySweepIntervalTicks(), false);
+		Integer sweepShell = yaml.readInt(entries, "entity-sweep-shell-blocks", "containment",
+				settings.entitySweepShellBlocks(), false);
+		yaml.reportUnknownKeys(entries, "containment", CONTAINMENT_KEYS, policy);
+
+		try {
+			return new ContainmentSettings(enabled, maxOvershoot, proximity, nearRadius, sweepInterval,
+					sweepShell);
+		} catch (IllegalArgumentException e) {
+			yaml.report(IssueCode.INVALID_VALUE, "containment", YamlAccess.lineOf(mapping), e.getMessage());
+			return settings;
+		}
+	}
+
+	/**
+	 * Parses the {@code chat} section.
+	 *
+	 * <p>Defaults to disabled: chat relay is opt-in, so a network that upgrades to a build that has it keeps
+	 * behaving exactly as it did until an administrator turns it on.
+	 *
+	 * @param node the section node, may be {@code null}
+	 * @param policy what to do with unrecognised keys
+	 * @return the settings
+	 */
+	private ChatSettings parseChat(Node node, UnknownFieldPolicy policy) {
+		MappingNode mapping = yaml.asMapping(node, "chat", false);
+		ChatSettings settings = ChatSettings.DEFAULT;
+		if (mapping == null) {
+			return settings;
+		}
+		sourceMap.put("chat", YamlAccess.lineOf(node));
+		Map<String, Node> entries = yaml.entries(mapping, "chat");
+
+		Boolean enabled = yaml.readBoolean(entries, "enabled", "chat", settings.enabled());
+		yaml.reportUnknownKeys(entries, "chat", CHAT_KEYS, policy);
+
+		return new ChatSettings(enabled);
 	}
 
 	/**

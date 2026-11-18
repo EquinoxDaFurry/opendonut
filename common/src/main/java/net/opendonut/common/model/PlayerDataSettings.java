@@ -36,6 +36,11 @@ import java.util.regex.Pattern;
  * @param flushTimeoutSeconds how long the proxy waits for a source backend to save a player's data before
  *                            the transfer is refused. Must stay below {@code transfer.max-pending-seconds},
  *                            which is the source backend's own timeout for the same transfer
+ * @param syncAdvancements when {@code true} (the default), advancement progress travels with the player data:
+ *                         it is stored in the same proxy database (separate table, own revision counter) and
+ *                         sent alongside every save and loaded on every join. Advancements live in
+ *                         {@code world/advancements/<uuid>.json}, not in the player file, so they need their
+ *                         own payload; when {@code player-data.enabled} is false this flag does nothing.
  */
 public record PlayerDataSettings(
 		boolean enabled,
@@ -47,7 +52,8 @@ public record PlayerDataSettings(
 		SyncScope scope,
 		int keepHistory,
 		int maxPayloadBytes,
-		int flushTimeoutSeconds) {
+		int flushTimeoutSeconds,
+		boolean syncAdvancements) {
 
 	/** The only storage implemented in this version. */
 	public static final String STORAGE_SQLITE = "sqlite";
@@ -84,7 +90,8 @@ public record PlayerDataSettings(
 			SyncScope.SESSION,
 			20,
 			DEFAULT_MAX_PAYLOAD_BYTES,
-			10);
+			10,
+			true);
 
 	/**
 	 * What to do when a backend cannot hand over a fresh snapshot in time.
@@ -258,6 +265,7 @@ public record PlayerDataSettings(
 						: syncIntervalSeconds + " s")
 				+ ", on flush failure " + onFlushFailure.name().toLowerCase(Locale.ROOT).replace('_', '-')
 				+ ", flush timeout " + flushTimeoutSeconds + " s"
-				+ ", history " + keepHistory + ", snapshot limit " + maxPayloadBytes + " bytes";
+				+ ", history " + keepHistory + ", snapshot limit " + maxPayloadBytes + " bytes"
+				+ ", advancements " + (syncAdvancements ? "synced" : "local only");
 	}
 }

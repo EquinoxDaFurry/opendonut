@@ -43,19 +43,25 @@ package net.opendonut.common.model;
  *                                  shorter than the backends' {@code transfer.max-pending-seconds} (15 by
  *                                  default), otherwise the backend gives up on the transfer before the proxy
  *                                  has finished deciding.
+ * @param rememberLastServer when {@code true} (the default), the proxy remembers which backend each player
+ *                           was last connected to and sends them straight there on their next login, instead
+ *                           of letting the default initial server pick load chunks on a server they are
+ *                           immediately moved away from. The memory is in-process: after a proxy restart the
+ *                           first login falls back to the default behaviour.
  */
 public record ProxySettings(
 		boolean autoRegisterBackends,
 		boolean requireBackendHello,
 		boolean disconnectUnroutedPlayers,
-		int arrivalVerificationTimeoutSeconds) {
+		int arrivalVerificationTimeoutSeconds,
+		boolean rememberLastServer) {
 
 	/** How long the proxy waits for an arriving player's backend to announce itself, by default. */
 	public static final int DEFAULT_ARRIVAL_VERIFICATION_SECONDS = 5;
 
 	/** The documented defaults, used when the {@code proxy} section is absent. */
 	public static final ProxySettings DEFAULT =
-			new ProxySettings(true, true, false, DEFAULT_ARRIVAL_VERIFICATION_SECONDS);
+			new ProxySettings(true, true, false, DEFAULT_ARRIVAL_VERIFICATION_SECONDS, true);
 
 	/**
 	 * Validates the settings.
@@ -87,6 +93,6 @@ public record ProxySettings(
 	 */
 	public ProxySettings withRequireBackendHello(boolean value) {
 		return new ProxySettings(autoRegisterBackends, value, disconnectUnroutedPlayers,
-				arrivalVerificationTimeoutSeconds);
+				arrivalVerificationTimeoutSeconds, rememberLastServer);
 	}
 }

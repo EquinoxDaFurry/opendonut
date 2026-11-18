@@ -107,6 +107,34 @@ final class PlayerDataStoreContract {
 		assertFalse(state.isExpired(now + 3_000L + 61_000L), "a just-taken lease is not expired");
 		assertTrue(state.isExpired(now + 3_000L + 61_000L + 60_000L));
 
+		// --- advancements: empty on a fresh player, compare-and-set save, content survives ---
+		UUID advanced = UUID.randomUUID();
+		assertTrue(store.loadAdvancements(advanced).isEmpty(), "a fresh player must have no advancements");
+
+		byte[] payload = "{\"minecraft:story/root\":{\"done\":true}}".getBytes();
+		PlayerDataStore.SaveOutcome advancementSaved = store.saveAdvancements(advanced, 0L, payload, "west", now);
+		assertTrue(advancementSaved.accepted(), advancementSaved::detail);
+		assertEquals(1L, advancementSaved.newRevision());
+
+		Optional<PlayerDataStore.StoredAdvancements> storedAdvancements = store.loadAdvancements(advanced);
+		assertTrue(storedAdvancements.isPresent());
+		assertEquals(1L, storedAdvancements.get().revision());
+		org.junit.jupiter.api.Assertions.assertArrayEquals(payload, storedAdvancements.get().payload());
+		assertEquals("west", storedAdvancements.get().updatedBy());
+
+		PlayerDataStore.SaveOutcome staleAdvancements =
+				store.saveAdvancements(advanced, 0L, new byte[] {9}, "west", now + 1);
+		assertFalse(staleAdvancements.accepted(), "a stale base revision must be refused for advancements too");
+		assertEquals(1L, staleAdvancements.newRevision());
+		org.junit.jupiter.api.Assertions.assertArrayEquals(payload,
+				store.loadAdvancements(advanced).orElseThrow().payload(),
+				"the stale payload must not overwrite the stored one");
+
+		PlayerDataStore.SaveOutcome nextAdvancements =
+				store.saveAdvancements(advanced, 1L, new byte[] {7, 7}, "east", now + 2);
+		assertTrue(nextAdvancements.accepted(), nextAdvancements::detail);
+		assertEquals(2L, nextAdvancements.newRevision());
+
 		// --- describe is informative ---
 		assertNotNull(store.describe());
 		assertTrue(store.describe().length() > 10);

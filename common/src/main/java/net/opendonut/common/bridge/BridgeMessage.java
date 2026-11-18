@@ -39,7 +39,10 @@ public sealed interface BridgeMessage
 		BridgeMessage.PlayerDataSaveResult, BridgeMessage.PlayerDataFlushRequest,
 		BridgeMessage.TimeReport, BridgeMessage.TimeSet,
 		BridgeMessage.TransferDimension, BridgeMessage.PlaceDimension,
-		BridgeMessage.TransferPortal, BridgeMessage.PlacePortal {
+		BridgeMessage.TransferPortal, BridgeMessage.PlacePortal,
+		BridgeMessage.AdvancementsLoadRequest, BridgeMessage.AdvancementsLoadResponse,
+		BridgeMessage.AdvancementsSaveRequest, BridgeMessage.AdvancementsSaveResult,
+		BridgeMessage.ChatRelay, BridgeMessage.ChatBroadcast {
 
 	/**
 	 * The wire type of this message.
@@ -740,6 +743,257 @@ public sealed interface BridgeMessage
 		@Override
 		public MessageType type() {
 			return MessageType.PLACE_PORTAL;
+		}
+	}
+
+	/**
+	 * Backend to proxy: ask for the stored advancement progress of a player.
+	 *
+	 * <p>Sent on the player's own connection right after the {@code PLAYER_DATA_LOAD_REQUEST} for the same
+	 * join. Advancements are stored per player in {@code world/advancements/<uuid>.json}, not in the player
+	 * data file, so they travel as their own blob.
+	 *
+	 * @param playerId the player
+	 * @param serverId the asking backend's id
+	 */
+	record AdvancementsLoadRequest(
+			UUID playerId,
+			String serverId) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public AdvancementsLoadRequest {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(serverId, "serverId");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.ADVANCEMENTS_LOAD_REQUEST;
+		}
+	}
+
+	/**
+	 * Proxy to backend: the stored advancement progress of a player.
+	 *
+	 * <p>The payload is the raw bytes of the source backend's advancements JSON file. When {@code present} is
+	 * false the payload is empty and the destination keeps its own local file.
+	 *
+	 * @param playerId the player
+	 * @param present whether the store holds a payload
+	 * @param revision the revision of the stored payload
+	 * @param payload the raw advancements JSON bytes
+	 * @param detail a human readable status
+	 */
+	record AdvancementsLoadResponse(
+			UUID playerId,
+			boolean present,
+			long revision,
+			byte[] payload,
+			String detail) implements BridgeMessage {
+
+		/**
+		 * Validates the record and copies the payload.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public AdvancementsLoadResponse {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(payload, "payload");
+			Objects.requireNonNull(detail, "detail");
+			payload = payload.clone();
+		}
+
+		@Override
+		public byte[] payload() {
+			return payload.clone();
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.ADVANCEMENTS_LOAD_RESPONSE;
+		}
+
+		// Records compare arrays by reference by default; a message is a value, so compare the payload bytes.
+		@Override
+		public boolean equals(Object other) {
+			return other instanceof AdvancementsLoadResponse response
+					&& playerId.equals(response.playerId)
+					&& present == response.present
+					&& revision == response.revision
+					&& Arrays.equals(payload, response.payload)
+					&& detail.equals(response.detail);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(playerId, present, revision, Arrays.hashCode(payload), detail);
+		}
+
+		@Override
+		public String toString() {
+			return "AdvancementsLoadResponse[playerId=" + playerId + ", present=" + present + ", revision="
+					+ revision + ", payload=" + payload.length + " bytes, detail=" + detail + "]";
+		}
+	}
+
+	/**
+	 * Backend to proxy: store this advancement progress for a player.
+	 *
+	 * <p>Sent right after the matching {@code PLAYER_DATA_SAVE_REQUEST}: on the periodic save, on
+	 * disconnect, and on the flush before a transfer. The store applies it compare-and-set on
+	 * {@code baseRevision}, exactly like player data, so a stale backend cannot overwrite a fresher payload.
+	 *
+	 * @param playerId the player
+	 * @param serverId the saving backend's id
+	 * @param baseRevision the revision the sender based this payload on
+	 * @param payload the raw advancements JSON bytes
+	 */
+	record AdvancementsSaveRequest(
+			UUID playerId,
+			String serverId,
+			long baseRevision,
+			byte[] payload) implements BridgeMessage {
+
+		/**
+		 * Validates the record and copies the payload.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public AdvancementsSaveRequest {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(serverId, "serverId");
+			Objects.requireNonNull(payload, "payload");
+			payload = payload.clone();
+		}
+
+		@Override
+		public byte[] payload() {
+			return payload.clone();
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.ADVANCEMENTS_SAVE_REQUEST;
+		}
+
+		// Records compare arrays by reference by default; a message is a value, so compare the payload bytes.
+		@Override
+		public boolean equals(Object other) {
+			return other instanceof AdvancementsSaveRequest request
+					&& playerId.equals(request.playerId)
+					&& serverId.equals(request.serverId)
+					&& baseRevision == request.baseRevision
+					&& Arrays.equals(payload, request.payload);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(playerId, serverId, baseRevision, Arrays.hashCode(payload));
+		}
+
+		@Override
+		public String toString() {
+			return "AdvancementsSaveRequest[playerId=" + playerId + ", serverId=" + serverId + ", baseRevision="
+					+ baseRevision + ", payload=" + payload.length + " bytes]";
+		}
+	}
+
+	/**
+	 * Proxy to backend: the store's answer to an {@code ADVANCEMENTS_SAVE_REQUEST}.
+	 *
+	 * @param playerId the player
+	 * @param accepted whether the payload was stored
+	 * @param revision the revision after the attempt
+	 * @param detail a human readable status
+	 */
+	record AdvancementsSaveResult(
+			UUID playerId,
+			boolean accepted,
+			long revision,
+			String detail) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public AdvancementsSaveResult {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(detail, "detail");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.ADVANCEMENTS_SAVE_RESULT;
+		}
+	}
+
+	/**
+	 * Backend to proxy: a chat message a player sent on this backend, to be shown on the others.
+	 *
+	 * <p>The content is the plain text of the signed chat body; the proxy relays it as an unsigned message
+	 * and never forwards signatures, so a relayed line can always be told apart from the sender's own signed
+	 * chat.
+	 *
+	 * @param senderId the sending player
+	 * @param senderName the sending player's display name
+	 * @param content the plain chat text
+	 */
+	record ChatRelay(
+			UUID senderId,
+			String senderName,
+			String content) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public ChatRelay {
+			Objects.requireNonNull(senderId, "senderId");
+			Objects.requireNonNull(senderName, "senderName");
+			Objects.requireNonNull(content, "content");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.CHAT_RELAY;
+		}
+	}
+
+	/**
+	 * Proxy to backend: show this chat message on this server.
+	 *
+	 * <p>Sent to every backend except the source of the matching {@code CHAT_RELAY}. The receiving backend
+	 * displays it to its local players and must not relay it again.
+	 *
+	 * @param senderId the sending player
+	 * @param senderName the sending player's display name
+	 * @param content the plain chat text
+	 */
+	record ChatBroadcast(
+			UUID senderId,
+			String senderName,
+			String content) implements BridgeMessage {
+
+		/**
+		 * Validates the record.
+		 *
+		 * @throws IllegalArgumentException if a component is missing
+		 */
+		public ChatBroadcast {
+			Objects.requireNonNull(senderId, "senderId");
+			Objects.requireNonNull(senderName, "senderName");
+			Objects.requireNonNull(content, "content");
+		}
+
+		@Override
+		public MessageType type() {
+			return MessageType.CHAT_BROADCAST;
 		}
 	}
 }

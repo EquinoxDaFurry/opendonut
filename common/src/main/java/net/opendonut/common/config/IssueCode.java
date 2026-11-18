@@ -102,6 +102,10 @@ public enum IssueCode {
 	/** The configured time authority is not one of the configured servers. */
 	TIME_AUTHORITY_UNKNOWN(Severity.ERROR),
 
+	// --- containment ----------------------------------------------------------
+	/** The containment overshoot is smaller than the transfer boundary margin, so transfers could never fire. */
+	CONTAINMENT_OVERSHOOT_BELOW_MARGIN(Severity.ERROR),
+
 	// --- informational ------------------------------------------------------
 	/** Derived values worth showing, such as route lookup results. */
 	DERIVED_VALUE(Severity.INFO);

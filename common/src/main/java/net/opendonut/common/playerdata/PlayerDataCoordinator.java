@@ -187,6 +187,82 @@ public final class PlayerDataCoordinator {
 	}
 
 	/**
+	 * The outcome of a {@link #handleAdvancementsLoadRequest}.
+	 *
+	 * @param present whether a payload exists for the player
+	 * @param revision the stored revision (0 when none)
+	 * @param payload the raw advancements JSON bytes, empty when {@code present} is false
+	 * @param detail an explanation, for the log and for the backend
+	 */
+	public record AdvancementsLoadOutcome(boolean present, long revision, byte[] payload, String detail) {
+	}
+
+	/**
+	 * Handles a backend's advancement load request: answer with the stored payload, if any.
+	 *
+	 * <p>Unlike the snapshot load, this does not touch the lease: the matching {@code PLAYER_DATA_LOAD_REQUEST}
+	 * on the same connection is what moves authority, and advancements simply ride along with it.
+	 *
+	 * @param playerId the player
+	 * @param serverId the asking backend
+	 * @param nowMillis the current time
+	 * @return the outcome
+	 */
+	public AdvancementsLoadOutcome handleAdvancementsLoadRequest(UUID playerId, String serverId, long nowMillis) {
+		Optional<PlayerDataStore.StoredAdvancements> stored = store.loadAdvancements(playerId);
+		if (stored.isEmpty()) {
+			return new AdvancementsLoadOutcome(false, 0L, new byte[0],
+					"no advancements are stored for this player yet; keep the local file");
+		}
+		PlayerDataStore.StoredAdvancements advancements = stored.get();
+		return new AdvancementsLoadOutcome(true, advancements.revision(), advancements.payload().clone(),
+				"advancements revision " + advancements.revision() + ", " + advancements.payload().length
+						+ " bytes, written by '" + advancements.updatedBy() + "'");
+	}
+
+	/**
+	 * Handles a backend's advancement save request: same rules as a snapshot save — size limit, lease check,
+	 * then compare-and-set in the store.
+	 *
+	 * @param playerId the player
+	 * @param serverId the writing backend, which must be the lease holder
+	 * @param baseRevision the revision the writer based the payload on
+	 * @param payload the raw advancements JSON bytes
+	 * @param nowMillis the current time
+	 * @return the outcome
+	 */
+	public SaveOutcome handleAdvancementsSaveRequest(
+			UUID playerId, String serverId, long baseRevision, byte[] payload, long nowMillis) {
+
+		if (payload.length > settings.maxPayloadBytes()) {
+			return new SaveOutcome(false, currentAdvancementsRevision(playerId),
+					"the advancements payload is " + payload.length + " bytes, over the configured limit of "
+							+ settings.maxPayloadBytes() + "; it was not stored");
+		}
+
+		Optional<PlayerDataStore.LeaseState> lease = store.lease(playerId);
+		if (lease.isPresent() && !lease.get().ownerServer().equals(serverId) && !lease.get().isExpired(nowMillis)) {
+			return new SaveOutcome(false, lease.get().revision(),
+					"the lease is held by '" + lease.get().ownerServer() + "' and has not expired, so '" + serverId
+							+ "' may not write; the advancements payload was not stored");
+		}
+
+		PlayerDataStore.SaveOutcome outcome =
+				store.saveAdvancements(playerId, baseRevision, payload, serverId, nowMillis);
+		return new SaveOutcome(outcome.accepted(), outcome.newRevision(), outcome.detail());
+	}
+
+	/**
+	 * The current revision of a player's advancements payload, 0 when none exists.
+	 *
+	 * @param playerId the player
+	 * @return the revision
+	 */
+	private long currentAdvancementsRevision(UUID playerId) {
+		return store.loadAdvancements(playerId).map(PlayerDataStore.StoredAdvancements::revision).orElse(0L);
+	}
+
+	/**
 	 * Moves a player's lease from one server to another.
 	 *
 	 * <p>Used twice: to the destination when a flush committed the snapshot before a transfer, and back to

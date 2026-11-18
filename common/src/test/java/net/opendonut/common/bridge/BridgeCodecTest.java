@@ -226,6 +226,71 @@ class BridgeCodecTest {
 		}
 
 		@Test
+		@DisplayName("ADVANCEMENTS_LOAD_REQUEST / ADVANCEMENTS_SAVE_REQUEST survive a round trip")
+		void advancementsRequests() {
+			UUID playerId = UUID.randomUUID();
+			BridgeMessage.AdvancementsLoadRequest load =
+					new BridgeMessage.AdvancementsLoadRequest(playerId, "west");
+			assertEquals(load, decodeOrFail(
+					BridgeCodec.encode(load, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+
+			BridgeMessage.AdvancementsSaveRequest save = new BridgeMessage.AdvancementsSaveRequest(
+					playerId, "west", 7L, "{\"minecraft:story/root\":{\"done\":true}}".getBytes());
+			assertEquals(save, decodeOrFail(
+					BridgeCodec.encode(save, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("ADVANCEMENTS_LOAD_RESPONSE / ADVANCEMENTS_SAVE_RESULT survive a round trip, empty payload included")
+		void advancementsResponses() {
+			UUID playerId = UUID.randomUUID();
+			BridgeMessage.AdvancementsLoadResponse empty = new BridgeMessage.AdvancementsLoadResponse(
+					playerId, false, 0L, new byte[0], "no stored advancements");
+			assertEquals(empty, decodeOrFail(
+					BridgeCodec.encode(empty, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+
+			BridgeMessage.AdvancementsLoadResponse present = new BridgeMessage.AdvancementsLoadResponse(
+					playerId, true, 12L, new byte[] {1, 2, 3, 4}, "ok");
+			BridgeMessage.AdvancementsLoadResponse received = assertInstanceOf(
+					BridgeMessage.AdvancementsLoadResponse.class, decodeOrFail(
+							BridgeCodec.encode(present, SECRET, NOW, BridgeCodec.randomNonce()),
+							SECRET, new NonceCache()));
+			assertEquals(present, received);
+			assertArrayEquals(new byte[] {1, 2, 3, 4}, received.payload());
+
+			BridgeMessage.AdvancementsSaveResult result =
+					new BridgeMessage.AdvancementsSaveResult(playerId, true, 13L, "stored");
+			assertEquals(result, decodeOrFail(
+					BridgeCodec.encode(result, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("CHAT_RELAY / CHAT_BROADCAST survive a round trip with unicode content")
+		void chatMessages() {
+			UUID senderId = UUID.randomUUID();
+			BridgeMessage.ChatRelay relay = new BridgeMessage.ChatRelay(senderId, "Steve", "héllo wörld ✓");
+			assertEquals(relay, decodeOrFail(
+					BridgeCodec.encode(relay, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+
+			BridgeMessage.ChatBroadcast broadcast =
+					new BridgeMessage.ChatBroadcast(senderId, "Steve", "héllo wörld ✓");
+			assertEquals(broadcast, decodeOrFail(
+					BridgeCodec.encode(broadcast, SECRET, NOW, BridgeCodec.randomNonce()), SECRET, new NonceCache()));
+		}
+
+		@Test
+		@DisplayName("an absurdly long chat payload is rejected on decode, not silently accepted")
+		void chatTooLongRejected() {
+			UUID senderId = UUID.randomUUID();
+			BridgeMessage.ChatRelay relay =
+					new BridgeMessage.ChatRelay(senderId, "Steve", "x".repeat(5000));
+			byte[] frame = BridgeCodec.encode(relay, SECRET, NOW, BridgeCodec.randomNonce());
+			BridgeDecodeResult result = BridgeCodec.decode(frame, SECRET, NOW, 30, new NonceCache());
+			DecodeFailure failure = assertInstanceOf(BridgeDecodeResult.Failed.class, result).failure();
+			assertEquals(DecodeFailure.MALFORMED_PAYLOAD, failure);
+		}
+
+		@Test
 		@DisplayName("encoding a message whose payload would exceed the frame limit is refused, not truncated")
 		void oversizedPayloadRefused() {
 			byte[] tooBig = new byte[BridgeCodec.MAX_PAYLOAD_BYTES + 1];

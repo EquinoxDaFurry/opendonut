@@ -24,7 +24,7 @@ class PlayerDataCoordinatorTest {
 	private static PlayerDataSettings enabled() {
 		return new PlayerDataSettings(true, "sqlite", "playerdata.db", 60, 60,
 				PlayerDataSettings.OnFlushFailure.REFUSE_TRANSFER, PlayerDataSettings.SyncScope.SESSION, 20,
-				48 * 1024, 10);
+				48 * 1024, 10, true);
 	}
 
 	private static byte[] envelopeOf(byte[] payload) {
@@ -133,6 +133,93 @@ class PlayerDataCoordinatorTest {
 						player, "west", 0L, new byte[] {1, 2, 3, 4, 5}, NOW);
 				assertFalse(outcome.accepted());
 				assertTrue(store.load(player).isEmpty());
+			}
+		}
+	}
+
+	@Nested
+	@DisplayName("advancements")
+	class Advancements {
+
+		@Test
+		@DisplayName("a player with nothing stored gets an empty answer")
+		void loadEmpty() {
+			try (InMemoryPlayerDataStore store = new InMemoryPlayerDataStore()) {
+				PlayerDataCoordinator coordinator = coordinator(store);
+				PlayerDataCoordinator.AdvancementsLoadOutcome outcome =
+						coordinator.handleAdvancementsLoadRequest(UUID.randomUUID(), "east", NOW);
+				assertFalse(outcome.present());
+				assertEquals(0L, outcome.revision());
+				assertEquals(0, outcome.payload().length);
+			}
+		}
+
+		@Test
+		@DisplayName("a save stores the payload with a moving revision, and the load returns it")
+		void saveThenLoad() {
+			try (InMemoryPlayerDataStore store = new InMemoryPlayerDataStore()) {
+				PlayerDataCoordinator coordinator = coordinator(store);
+				UUID player = UUID.randomUUID();
+				byte[] payload = "{\"minecraft:story/root\":{\"done\":true}}".getBytes();
+
+				PlayerDataCoordinator.SaveOutcome saved =
+						coordinator.handleAdvancementsSaveRequest(player, "west", 0L, payload, NOW);
+				assertTrue(saved.accepted(), saved::detail);
+				assertEquals(1L, saved.revision());
+
+				PlayerDataCoordinator.AdvancementsLoadOutcome loaded =
+						coordinator.handleAdvancementsLoadRequest(player, "east", NOW + 1);
+				assertTrue(loaded.present());
+				assertEquals(1L, loaded.revision());
+				assertArrayEquals(payload, loaded.payload());
+			}
+		}
+
+		@Test
+		@DisplayName("a stale base revision is refused and the stored payload is untouched")
+		void staleBase() {
+			try (InMemoryPlayerDataStore store = new InMemoryPlayerDataStore()) {
+				PlayerDataCoordinator coordinator = coordinator(store);
+				UUID player = UUID.randomUUID();
+				coordinator.handleAdvancementsSaveRequest(player, "west", 0L, new byte[] {1}, NOW);
+
+				PlayerDataCoordinator.SaveOutcome stale =
+						coordinator.handleAdvancementsSaveRequest(player, "west", 0L, new byte[] {2}, NOW + 1);
+				assertFalse(stale.accepted());
+				assertArrayEquals(new byte[] {1},
+						store.loadAdvancements(player).orElseThrow().payload());
+			}
+		}
+
+		@Test
+		@DisplayName("a save from a backend that does not hold the lease is refused")
+		void notTheLeaseHolder() {
+			try (InMemoryPlayerDataStore store = new InMemoryPlayerDataStore()) {
+				PlayerDataCoordinator coordinator = coordinator(store);
+				UUID player = UUID.randomUUID();
+				assertTrue(store.acquireLease(player, "east", NOW, 60_000L).acquired());
+
+				PlayerDataCoordinator.SaveOutcome outcome =
+						coordinator.handleAdvancementsSaveRequest(player, "west", 0L, new byte[] {1}, NOW + 1);
+				assertFalse(outcome.accepted());
+				assertTrue(outcome.detail().contains("east"), outcome.detail());
+				assertTrue(store.loadAdvancements(player).isEmpty());
+			}
+		}
+
+		@Test
+		@DisplayName("an oversized payload is refused before it reaches the store")
+		void oversized() {
+			try (InMemoryPlayerDataStore store = new InMemoryPlayerDataStore()) {
+				PlayerDataCoordinator coordinator = coordinator(store);
+				UUID player = UUID.randomUUID();
+				byte[] huge = new byte[48 * 1024 + 1];
+
+				PlayerDataCoordinator.SaveOutcome outcome =
+						coordinator.handleAdvancementsSaveRequest(player, "west", 0L, huge, NOW);
+				assertFalse(outcome.accepted());
+				assertTrue(outcome.detail().contains("limit"), outcome.detail());
+				assertTrue(store.loadAdvancements(player).isEmpty());
 			}
 		}
 	}
