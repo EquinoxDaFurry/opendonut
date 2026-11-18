@@ -1,0 +1,22 @@
+[00:56:08 INFO]: Booting up Velocity 4.3.1...
+[00:56:08 INFO]: Connections will use NIO channels, Java compression, Java ciphers
+[00:56:08 WARN]: The proxy is running in offline mode! This is a security risk and you will NOT receive any support!
+[00:56:08 INFO]: Loading localizations...
+[00:56:08 INFO]: Loading plugins...
+[00:56:08 INFO]: Loaded plugin opendonut 0.1.0-dev by OpenDonut contributors
+[00:56:08 INFO]: Loaded 2 plugins
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (border-particles) border particles: end_rod, radius 9, every 4 tick(s), up to 256 per side; the wall is about 254 block(s) across at its widest
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (containment) region containment: max overshoot 2 block(s), chunk radius 3 within 48 block(s) of the border, entity sweep every 20 tick(s) over 64 block(s)
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (world.border:25) world border is X=[-100000,100000) Z=[-100000,100000) (40000000000 blocks, 12500 x 12500 chunks)
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (transfer:45) transfer.max-pending-seconds (15) is larger than transfer.cooldown-seconds (5), so the pending timeout is what actually controls how often a failed transfer is retried
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers:53) coverage: 100.000% of the world border is assigned (40000000000 of 40000000000 blocks), using 2 lookup buckets
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[0]:53) region 'west' X=[-100000,0) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25566
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (servers[1]:61) region 'east' X=[0,100000) Z=[-100000,100000) (20000000000 blocks, 6250 x 12500 chunks) at 127.0.0.1:25567
+[00:56:08 INFO] [opendonut]: OpenDonut configuration: [INFO] DERIVED_VALUE (time:92) world time sync: authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s); the authority is 'west'
+[00:56:08 INFO] [opendonut]: OpenDonut: this platform has no POSIX permissions, so OpenDonut cannot verify that plugins\opendonut\secrets\bridge-secret.txt is private; make sure the folder is not shared
+[00:56:08 INFO] [opendonut]: OpenDonut: player data sync ready — player-data coordinator: sqlite (playerdata.db), scope session, lease 60 s, saves every 60 s, on flush failure refuse-transfer, flush timeout 10 s, history 20, snapshot limit 49152 bytes, advancements synced; store: sqlite store at C:\Users\User\AppData\Local\OpenDonut\velocity\plugins\opendonut\playerdata.db: 2 snapshot(s), 2 lease(s)
+[00:56:08 INFO] [opendonut]: OpenDonut: world time sync ready — time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), no report received yet
+[00:56:08 INFO] [opendonut]: OpenDonut 26.3 is active: 2 region(s) of the world border, seed 8275902214569690041, channel opendonut:bridge, secret fingerprint 6488b4ac
+[00:56:08 INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
+[00:56:08 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
+[00:56:08 INFO]: Done (1.55s)!
