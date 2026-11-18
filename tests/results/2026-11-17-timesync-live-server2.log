@@ -85,3 +85,37 @@ Starting net.fabricmc.loader.impl.game.minecraft.BundlerClassPathCapture
 [19:43:49] [Server thread/INFO]: OpenDonut: world 'world' seed 8275902214569690041 on Minecraft 26.3, configuration C:\Users\User\AppData\Local\OpenDonut\Server2\.\config\opendonut.yml
 [19:43:49] [Server thread/INFO]: OpenDonut: boundary checks are active; a player who leaves X=[0,100000) Z=[-100000,100000) by 2 block(s) will be handed to the proxy
 [19:44:49] [Server thread/INFO]: Server empty for 60 seconds, pausing
+[19:47:48] [Server thread/INFO]: EquinoxDaFurry[/127.0.0.1:59253] logged in with entity id 24 at (1.5, 128.0, 96.5)
+[19:47:48] [Server thread/INFO]: System chat: EquinoxDaFurry joined the game
+[19:47:48] [Server thread/INFO]: OpenDonut: the proxy accepted this backend as 'east' (seed 8275902214569690041, 0 transfer(s) in flight)
+[19:47:48] [Server thread/WARN]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 123973 tick(s) (was 96509, +27464) because of 'hello'
+[19:47:48] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 123973 tick(s) (was 123973, +0) because of 'transfer'
+[19:47:48] [Server thread/INFO]: OpenDonut: applied the stored data of EquinoxDaFurry (snapshot v1 dataVersion 5023, 4263 bytes, mods ae59a8b39ce6297d, taken 1794905267140, 4263 bytes of NBT, mod fingerprint ae59a8b39ce6297d)
+[19:47:48] [Server thread/INFO]: OpenDonut: placed EquinoxDaFurry at global (1, 128, 96) after arriving from 'west'
+[19:48:00] [Server thread/INFO]: System chat: [EquinoxDaFurry: Teleported EquinoxDaFurry to 0.500000, 100.000000, 0.500000]
+[19:48:02] [Server thread/WARN]: EquinoxDaFurry moved too quickly! 0.0,-11.27484983491108,0.0
+[19:48:06] [Server thread/INFO]: OpenDonut: EquinoxDaFurry left region 'east' (past min-x, 2 block(s) outside), which is owned by 'west' (127.0.0.1:25566); asked the proxy to move them
+[19:48:06] [Server thread/INFO]: EquinoxDaFurry lost connection: Disconnected
+[19:48:06] [Server thread/INFO]: System chat: EquinoxDaFurry left the game
+[19:48:33] [Server thread/INFO]: EquinoxDaFurry[/127.0.0.1:63653] logged in with entity id 482 at (-1.3620154831364586, 61.75428746404139, 0.4074513191076382)
+[19:48:33] [Server thread/INFO]: System chat: EquinoxDaFurry joined the game
+[19:48:33] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 124886 tick(s) (was 124885, +1) because of 'transfer'
+[19:48:33] [Server thread/INFO]: OpenDonut: the proxy accepted this backend as 'east' (seed 8275902214569690041, 0 transfer(s) in flight)
+[19:48:33] [Server thread/INFO]: OpenDonut: applied the stored data of EquinoxDaFurry (snapshot v1 dataVersion 5023, 4263 bytes, mods ae59a8b39ce6297d, taken 1794905313141, 4263 bytes of NBT, mod fingerprint ae59a8b39ce6297d)
+[19:48:33] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 124886 tick(s) (was 124886, +0) because of 'hello'
+[19:48:33] [Server thread/INFO]: OpenDonut: placed EquinoxDaFurry at global (1, 62, 0) after arriving from 'west'
+[19:48:39] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 125003 tick(s) (was 125005, -2) because of 'periodic'
+[19:48:39] [Server thread/INFO]: OpenDonut: EquinoxDaFurry left region 'east' (past min-x, 2 block(s) outside), which is owned by 'west' (127.0.0.1:25566); asked the proxy to move them
+[19:48:39] [Server thread/INFO]: EquinoxDaFurry lost connection: Disconnected
+[19:48:39] [Server thread/INFO]: System chat: EquinoxDaFurry left the game
+[19:48:45] [Server thread/INFO]: EquinoxDaFurry[/127.0.0.1:55709] logged in with entity id 656 at (-1.254188562346549, 61.865966466672305, 0.33397309457116414)
+[19:48:45] [Server thread/INFO]: System chat: EquinoxDaFurry joined the game
+[19:48:45] [Server thread/INFO]: OpenDonut: the proxy accepted this backend as 'east' (seed 8275902214569690041, 0 transfer(s) in flight)
+[19:48:45] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 125123 tick(s) (was 125121, +2) because of 'hello'
+[19:48:45] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 125123 tick(s) (was 125123, +0) because of 'transfer'
+[19:48:45] [Server thread/INFO]: OpenDonut: applied the stored data of EquinoxDaFurry (snapshot v1 dataVersion 5023, 4263 bytes, mods ae59a8b39ce6297d, taken 1794905325145, 4263 bytes of NBT, mod fingerprint ae59a8b39ce6297d)
+[19:48:45] [Server thread/INFO]: OpenDonut: placed EquinoxDaFurry at global (3, 61, 0) after arriving from 'west'
+[19:49:09] [Server thread/INFO]: OpenDonut: applied the proxy's time correction: set clock minecraft:overworld to 125604 tick(s) (was 125605, -1) because of 'periodic'
+[19:49:13] [Server thread/INFO]: EquinoxDaFurry lost connection: Disconnected
+[19:49:13] [Server thread/INFO]: System chat: EquinoxDaFurry left the game
+[19:50:13] [Server thread/INFO]: Server empty for 60 seconds, pausing

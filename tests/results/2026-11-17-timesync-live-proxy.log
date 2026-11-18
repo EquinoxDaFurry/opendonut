@@ -18,3 +18,356 @@
 [19:43:38 INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
 [19:43:38 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
 [19:43:38 INFO]: Done (1.19s)!
+[19:47:43 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:52839) has connected
+[19:47:43 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:47:44 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:47:44 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), no report received yet
+[19:47:44 WARN] [opendonut]: OpenDonut: the lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f was taken over by 'west' from an expired holder
+[19:47:44 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 124, 1275 bytes, written by 'east' (lease taken over from an expired holder))
+[19:47:44 INFO] [opendonut]: OpenDonut: time report from 'west': stored 123907 tick(s) of clock minecraft:overworld as the base reading
+[19:47:44 INFO] [opendonut]: OpenDonut: time report from 'west': stored 123908 tick(s) of clock minecraft:overworld as the base reading
+[19:47:44 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 125)
+[19:47:46 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:47:47 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 126)
+[19:47:47 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:47:47 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:47:47 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:47:48 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:47:48 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:47:48 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:47:48 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 123908 tick(s) of minecraft:overworld
+[19:47:48 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 126, 1526 bytes, written by 'west')
+[19:47:48 WARN] [opendonut]: OpenDonut: ignored a time report from 'east': 'east' is not the time authority ('west'); ignoring its clock reading
+[19:47:48 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 127)
+[19:48:00 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:52839) -> executed command /execute in minecraft:overworld run tp 0 100 0
+[19:48:06 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:48:06 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 128)
+[19:48:06 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:48:06 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:48:06 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:48:06 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:48:06 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:48:06 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:48:06 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 123908 tick(s) of minecraft:overworld
+[19:48:06 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 128, 1284 bytes, written by 'east')
+[19:48:07 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124356 tick(s) of clock minecraft:overworld as the base reading
+[19:48:09 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124413 tick(s) of clock minecraft:overworld as the base reading
+[19:48:14 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124514 tick(s) of clock minecraft:overworld as the base reading
+[19:48:17 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:52839) -> executed command /execute in minecraft:overworld run tp 0 100 0
+[19:48:20 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124615 tick(s) of clock minecraft:overworld as the base reading
+[19:48:25 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124715 tick(s) of clock minecraft:overworld as the base reading
+[19:48:30 INFO] [opendonut]: OpenDonut: time report from 'west': stored 124816 tick(s) of clock minecraft:overworld as the base reading
+[19:48:31 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:52839) -> executed command /time set minecraft:noon
+[19:48:33 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:48:33 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 129)
+[19:48:33 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:48:33 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:48:33 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:48:33 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:48:33 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:48:33 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:48:33 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 124816 tick(s) of minecraft:overworld
+[19:48:33 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 129, 1528 bytes, written by 'west')
+[19:48:39 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:48:39 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 130)
+[19:48:39 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:48:39 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:48:39 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:48:40 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:48:40 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:48:40 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:48:40 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 124816 tick(s) of minecraft:overworld
+[19:48:40 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 130, 1278 bytes, written by 'east')
+[19:48:40 INFO] [opendonut]: OpenDonut: time report from 'west': stored 126171 tick(s) of clock minecraft:overworld as the base reading
+[19:48:40 INFO] [opendonut]: OpenDonut: time report from 'west': stored 125019 tick(s) of clock minecraft:overworld as the base reading
+[19:48:44 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 131)
+[19:48:45 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:48:45 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 132)
+[19:48:45 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:48:45 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:48:45 INFO] [opendonut]: OpenDonut: time report from 'west': stored 125119 tick(s) of clock minecraft:overworld as the base reading
+[19:48:45 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:48:45 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:48:45 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:48:45 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:48:45 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 125119 tick(s) of minecraft:overworld
+[19:48:45 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 132, 1526 bytes, written by 'west')
+[19:48:48 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 133)
+[19:49:13 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:52839) has disconnected
+[19:49:13 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:54:10 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) has connected
+[19:54:10 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:54:11 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:54:11 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 125119 tick(s) of minecraft:overworld
+[19:54:11 WARN] [opendonut]: OpenDonut: the lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f was taken over by 'west' from an expired holder
+[19:54:11 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 133, 1277 bytes, written by 'east' (lease taken over from an expired holder))
+[19:54:11 INFO] [opendonut]: OpenDonut: time report from 'west': stored 126483 tick(s) of clock minecraft:overworld as the base reading
+[19:54:13 INFO] [opendonut]: OpenDonut: time report from 'west': stored 131677 tick(s) of clock minecraft:overworld as the base reading
+[19:54:13 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:54:13 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 134)
+[19:54:13 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:54:13 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:54:13 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:54:14 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:54:14 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:54:14 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:54:14 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 131677 tick(s) of minecraft:overworld
+[19:54:14 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 134, 1535 bytes, written by 'west')
+[19:55:03 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 135)
+[19:55:16 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:55:16 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 136)
+[19:55:16 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:55:16 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:55:17 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:55:17 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:55:17 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:55:17 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:55:17 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 131677 tick(s) of minecraft:overworld
+[19:55:17 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 136, 1270 bytes, written by 'east')
+[19:55:17 INFO] [opendonut]: OpenDonut: time report from 'west': stored 132888 tick(s) of clock minecraft:overworld as the base reading
+[19:55:18 INFO] [opendonut]: OpenDonut: time report from 'west': stored 132970 tick(s) of clock minecraft:overworld as the base reading
+[19:55:23 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /gamemode creative
+[19:55:23 INFO] [opendonut]: OpenDonut: time report from 'west': stored 133096 tick(s) of clock minecraft:overworld as the base reading
+[19:55:27 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:55:27 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 137)
+[19:55:27 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:55:27 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:55:27 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:55:27 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:55:27 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:55:27 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:55:27 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 133096 tick(s) of minecraft:overworld
+[19:55:27 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 137, 1531 bytes, written by 'west')
+[19:55:31 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /gamemode creative
+[19:56:03 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 138)
+[19:57:03 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 139)
+[19:57:08 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:57:08 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 140)
+[19:57:08 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:57:08 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:57:08 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:57:08 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:57:08 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:57:08 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:57:08 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 133096 tick(s) of minecraft:overworld
+[19:57:08 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 140, 1269 bytes, written by 'east')
+[19:57:08 INFO] [opendonut]: OpenDonut: time report from 'west': stored 134371 tick(s) of clock minecraft:overworld as the base reading
+[19:57:08 INFO] [opendonut]: OpenDonut: time report from 'west': stored 135193 tick(s) of clock minecraft:overworld as the base reading
+[19:57:08 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 141)
+[19:57:12 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /gamemode creative
+[19:57:13 INFO] [opendonut]: OpenDonut: time report from 'west': stored 135296 tick(s) of clock minecraft:overworld as the base reading
+[19:57:13 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:57:13 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 142)
+[19:57:13 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:57:13 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:57:14 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:57:14 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:57:14 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:57:14 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:57:14 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 135296 tick(s) of minecraft:overworld
+[19:57:14 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 142, 1533 bytes, written by 'west')
+[19:57:44 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:57:44 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 143)
+[19:57:44 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:57:44 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:57:44 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:57:45 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:57:45 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:57:45 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:57:45 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 135296 tick(s) of minecraft:overworld
+[19:57:45 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 143, 1280 bytes, written by 'east')
+[19:57:45 INFO] [opendonut]: OpenDonut: time report from 'west': stored 135920 tick(s) of clock minecraft:overworld as the base reading
+[19:57:49 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136002 tick(s) of clock minecraft:overworld as the base reading
+[19:57:50 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:57:50 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 144)
+[19:57:50 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:57:50 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:57:50 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:57:50 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:57:50 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:57:50 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:57:50 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 136002 tick(s) of minecraft:overworld
+[19:57:50 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 144, 1533 bytes, written by 'west')
+[19:57:59 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:57:59 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 145)
+[19:57:59 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:57:59 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:57:59 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:57:59 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:57:59 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:57:59 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:57:59 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 136002 tick(s) of minecraft:overworld
+[19:57:59 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 145, 1281 bytes, written by 'east')
+[19:57:59 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136204 tick(s) of clock minecraft:overworld as the base reading
+[19:58:04 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136305 tick(s) of clock minecraft:overworld as the base reading
+[19:58:08 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 146)
+[19:58:09 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136405 tick(s) of clock minecraft:overworld as the base reading
+[19:58:14 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136506 tick(s) of clock minecraft:overworld as the base reading
+[19:58:19 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136606 tick(s) of clock minecraft:overworld as the base reading
+[19:58:24 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136707 tick(s) of clock minecraft:overworld as the base reading
+[19:58:29 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136808 tick(s) of clock minecraft:overworld as the base reading
+[19:58:34 INFO] [opendonut]: OpenDonut: time report from 'west': stored 136908 tick(s) of clock minecraft:overworld as the base reading
+[19:58:39 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137009 tick(s) of clock minecraft:overworld as the base reading
+[19:58:44 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137110 tick(s) of clock minecraft:overworld as the base reading
+[19:58:49 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137211 tick(s) of clock minecraft:overworld as the base reading
+[19:58:54 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137312 tick(s) of clock minecraft:overworld as the base reading
+[19:58:59 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137412 tick(s) of clock minecraft:overworld as the base reading
+[19:59:04 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137513 tick(s) of clock minecraft:overworld as the base reading
+[19:59:08 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 147)
+[19:59:09 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137614 tick(s) of clock minecraft:overworld as the base reading
+[19:59:09 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:59:09 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 148)
+[19:59:09 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:59:09 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:59:09 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:59:10 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:59:10 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:59:10 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:59:10 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 137614 tick(s) of minecraft:overworld
+[19:59:10 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 148, 1545 bytes, written by 'west')
+[19:59:10 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 149)
+[19:59:28 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:59:28 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 150)
+[19:59:28 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:59:28 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:59:28 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:59:28 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:59:28 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:59:28 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:59:28 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 137614 tick(s) of minecraft:overworld
+[19:59:28 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 150, 1294 bytes, written by 'east')
+[19:59:28 INFO] [opendonut]: OpenDonut: time report from 'west': stored 137993 tick(s) of clock minecraft:overworld as the base reading
+[19:59:29 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138017 tick(s) of clock minecraft:overworld as the base reading
+[19:59:34 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138118 tick(s) of clock minecraft:overworld as the base reading
+[19:59:37 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[19:59:37 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 151)
+[19:59:37 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[19:59:37 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[19:59:37 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[19:59:37 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[19:59:37 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[19:59:37 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[19:59:37 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 138118 tick(s) of minecraft:overworld
+[19:59:37 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 151, 1541 bytes, written by 'west')
+[19:59:49 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[19:59:49 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 152)
+[19:59:49 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[19:59:49 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[19:59:49 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[19:59:49 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[19:59:49 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[19:59:49 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[19:59:49 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 138118 tick(s) of minecraft:overworld
+[19:59:49 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 152, 1310 bytes, written by 'east')
+[19:59:49 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138407 tick(s) of clock minecraft:overworld as the base reading
+[19:59:50 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138421 tick(s) of clock minecraft:overworld as the base reading
+[19:59:55 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138522 tick(s) of clock minecraft:overworld as the base reading
+[20:00:00 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138623 tick(s) of clock minecraft:overworld as the base reading
+[20:00:05 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138723 tick(s) of clock minecraft:overworld as the base reading
+[20:00:08 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 153)
+[20:00:10 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138823 tick(s) of clock minecraft:overworld as the base reading
+[20:00:15 INFO] [opendonut]: OpenDonut: time report from 'west': stored 138923 tick(s) of clock minecraft:overworld as the base reading
+[20:00:20 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139024 tick(s) of clock minecraft:overworld as the base reading
+[20:00:25 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139124 tick(s) of clock minecraft:overworld as the base reading
+[20:00:30 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139224 tick(s) of clock minecraft:overworld as the base reading
+[20:00:35 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139325 tick(s) of clock minecraft:overworld as the base reading
+[20:00:40 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139425 tick(s) of clock minecraft:overworld as the base reading
+[20:00:45 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139526 tick(s) of clock minecraft:overworld as the base reading
+[20:00:50 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139627 tick(s) of clock minecraft:overworld as the base reading
+[20:00:55 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139728 tick(s) of clock minecraft:overworld as the base reading
+[20:01:00 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139829 tick(s) of clock minecraft:overworld as the base reading
+[20:01:05 INFO] [opendonut]: OpenDonut: time report from 'west': stored 139929 tick(s) of clock minecraft:overworld as the base reading
+[20:01:09 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 154)
+[20:01:10 INFO] [opendonut]: OpenDonut: time report from 'west': stored 140030 tick(s) of clock minecraft:overworld as the base reading
+[20:01:15 INFO] [opendonut]: OpenDonut: time report from 'west': stored 140130 tick(s) of clock minecraft:overworld as the base reading
+[20:01:17 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[20:01:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 155)
+[20:01:17 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[20:01:17 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[20:01:17 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[20:01:17 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[20:01:17 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 140130 tick(s) of minecraft:overworld
+[20:01:17 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[20:01:17 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[20:01:17 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 155, 1546 bytes, written by 'west')
+[20:01:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 156)
+[20:02:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 157)
+[20:02:19 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /fill ~10 ~10 ~10 ~-10 ~-10 ~-10 minecraft:nether_portal replace minecraft:obsidian strict
+[20:02:37 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /fill ~10 ~10 ~10 ~-10 ~-10 ~-10 minecraft:obsidian replace minecraft:oak_planks strict
+[20:03:00 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) -> executed command /fill ~10 ~10 ~10 ~-10 ~-10 ~-10 minecraft:nether_portal replace minecraft:oak_planks strict
+[20:03:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 158)
+[20:03:21 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'west' until 'east' saves their data (up to 10 s)
+[20:03:21 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 159)
+[20:03:21 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'east' to 'west' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west'
+[20:03:21 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[20:03:21 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[20:03:22 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'west' (SUCCESS)
+[20:03:22 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'east': java.lang.IllegalStateException: Not connected to server!
+[20:03:22 INFO] [opendonut]: OpenDonut: backend 'west' verified (world, seed and region match the central configuration)
+[20:03:22 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 140130 tick(s) of minecraft:overworld
+[20:03:22 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'west' (snapshot revision 159, 1383 bytes, written by 'east')
+[20:03:22 INFO] [opendonut]: OpenDonut: time report from 'west': stored 141376 tick(s) of clock minecraft:overworld as the base reading
+[20:03:22 INFO] [opendonut]: OpenDonut: time report from 'west': stored 142664 tick(s) of clock minecraft:overworld as the base reading
+[20:03:22 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 160)
+[20:03:27 INFO] [opendonut]: OpenDonut: time report from 'west': stored 142767 tick(s) of clock minecraft:overworld as the base reading
+[20:03:32 INFO] [opendonut]: OpenDonut: time report from 'west': stored 142868 tick(s) of clock minecraft:overworld as the base reading
+[20:03:37 INFO] [opendonut]: OpenDonut: time report from 'west': stored 142969 tick(s) of clock minecraft:overworld as the base reading
+[20:03:40 INFO] [opendonut]: OpenDonut: holding the move of EquinoxDaFurry to 'east' until 'west' saves their data (up to 10 s)
+[20:03:40 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'west' (stored as revision 161)
+[20:03:40 INFO] [opendonut]: OpenDonut: lease for d3344de9-db24-41e8-b1c2-1a8bc3a68e0f moved from 'west' to 'east' (granted); moving d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east'
+[20:03:40 INFO]: [server connection] EquinoxDaFurry -> east has connected
+[20:03:40 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[20:03:40 INFO] [opendonut]: OpenDonut: d3344de9-db24-41e8-b1c2-1a8bc3a68e0f is now on 'east' (SUCCESS)
+[20:03:40 INFO] [opendonut]: OpenDonut: backend 'east' verified (world, seed and region match the central configuration)
+[20:03:40 INFO] [opendonut]: OpenDonut: time sync: authority 'west', authority west, clock minecraft:overworld, backends report every 5 s, proxy pushes every 30 s, divergence log threshold 20 tick(s), last report 142969 tick(s) of minecraft:overworld
+[20:03:40 ERROR] [opendonut]: OpenDonut: could not send a TRANSFER_RESULT to backend 'west': java.lang.IllegalStateException: Not connected to server!
+[20:03:40 INFO] [opendonut]: OpenDonut: sent the stored data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f to 'east' (snapshot revision 161, 1640 bytes, written by 'west')
+[20:04:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 162)
+[20:05:17 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 163)
+[20:06:18 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 164)
+[20:07:18 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 165)
+[20:08:18 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 166)
+[20:09:18 INFO] [opendonut]: OpenDonut: stored the data of d3344de9-db24-41e8-b1c2-1a8bc3a68e0f from 'east' (stored as revision 167)
+[20:09:31 ERROR]: [server connection] EquinoxDaFurry -> east: exception encountered in com.velocitypowered.proxy.connection.backend.BackendPlaySessionHandler@1a9eb949
+java.net.SocketException: Connection reset
+	at java.base/sun.nio.ch.SocketChannelImpl.throwConnectionReset(SocketChannelImpl.java:398) ~[?:?]
+	at java.base/sun.nio.ch.SocketChannelImpl.implRead(SocketChannelImpl.java:430) ~[?:?]
+	at java.base/sun.nio.ch.SocketChannelImpl.read(SocketChannelImpl.java:488) ~[?:?]
+	at io.netty.buffer.AdaptivePoolingAllocator$AdaptiveByteBuf.setBytes(AdaptivePoolingAllocator.java:2554) ~[velocity.jar:4.3.1]
+	at io.netty.buffer.AbstractByteBuf.writeBytes(AbstractByteBuf.java:1139) ~[velocity.jar:4.3.1]
+	at io.netty.channel.socket.nio.NioSocketChannel.doReadBytes(NioSocketChannel.java:350) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.AbstractNioByteChannel$NioByteUnsafe.read(AbstractNioByteChannel.java:161) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:448) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484) ~[velocity.jar:4.3.1]
+	at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274) ~[velocity.jar:4.3.1]
+	at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210) ~[velocity.jar:4.3.1]
+	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214) ~[velocity.jar:4.3.1]
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74) ~[velocity.jar:4.3.1]
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30) ~[velocity.jar:4.3.1]
+	at java.base/java.lang.Thread.run(Thread.java:1516) [?:?]
+[20:09:31 INFO]: [server connection] EquinoxDaFurry -> east has disconnected
+[20:09:31 ERROR]: [connected player] EquinoxDaFurry (/127.0.0.1:63690): unable to connect to server west
+io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused: getsockopt: /127.0.0.1:25566
+Caused by: java.net.ConnectException: Connection refused: getsockopt
+	at java.base/sun.nio.ch.Net.pollConnect(Native Method) ~[?:?]
+	at java.base/sun.nio.ch.Net.pollConnectNow(Net.java:642) ~[?:?]
+	at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(SocketChannelImpl.java:1043) ~[?:?]
+	at io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:330) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:387) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:435) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514) ~[velocity.jar:4.3.1]
+	at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484) ~[velocity.jar:4.3.1]
+	at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274) ~[velocity.jar:4.3.1]
+	at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210) ~[velocity.jar:4.3.1]
+	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214) ~[velocity.jar:4.3.1]
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74) ~[velocity.jar:4.3.1]
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30) ~[velocity.jar:4.3.1]
+	at java.base/java.lang.Thread.run(Thread.java:1516) [?:?]
+[20:09:32 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:63690) has disconnected: [38;5;9mUnable to connect you to west. Please try again later.[0m

@@ -16,3 +16,8 @@
 [17:24:35 INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
 [17:24:35 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
 [17:24:35 INFO]: Done (1.37s)!
+[17:29:42 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:57546) has connected
+[17:29:43 INFO]: [server connection] EquinoxDaFurry -> west has connected
+[17:29:43 INFO]: [server connection] EquinoxDaFurry -> west has disconnected
+[17:29:43 ERROR]: [connected player] EquinoxDaFurry (/127.0.0.1:57546): disconnected while connecting to west: multiplayer.disconnect.not_whitelisted
+[17:29:43 INFO]: [connected player] EquinoxDaFurry (/127.0.0.1:57546) has disconnected: [38;5;9mUnable to connect to west: multiplayer.disconnect.not_whitelisted[0m

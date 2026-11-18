@@ -82,3 +82,14 @@ Starting net.fabricmc.loader.impl.game.minecraft.BundlerClassPathCapture
 [17:24:47] [Server thread/INFO]: OpenDonut 0.1.0-dev — server 'west' owns X=[-100000,0) Z=[-100000,100000)
 [17:24:47] [Server thread/INFO]: OpenDonut: world 'world' seed 8275902214569690041 on Minecraft 26.3, configuration E:\!!Mature Projects\DonutSMP network\Server1\.\config\opendonut.yml
 [17:24:47] [Server thread/INFO]: OpenDonut: boundary checks are active; a player who leaves X=[-100000,0) Z=[-100000,100000) by 2 block(s) will be handed to the proxy
+[17:25:47] [Server thread/INFO]: Server empty for 60 seconds, pausing
+[17:29:43] [Server thread/INFO]: Disconnecting EquinoxDaFurry (/127.0.0.1:57627): You are not white-listed on this server!
+[17:29:43] [Server thread/INFO]: EquinoxDaFurry (/127.0.0.1:57627) lost connection: You are not white-listed on this server!
+[17:29:43] [Server thread/WARN]: handleDisconnection() called twice
+[17:29:57] [Server thread/INFO]: Stopping server
+[17:29:57] [Server thread/INFO]: Saving players
+[17:29:57] [Server thread/INFO]: Saving worlds
+[17:29:57] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[17:29:57] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[17:29:57] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[17:29:57] [Server thread/INFO]: OpenDonut: stopping after 0 transfer request(s), 0 refused by the proxy

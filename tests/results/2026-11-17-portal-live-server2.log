@@ -85,3 +85,10 @@ Starting net.fabricmc.loader.impl.game.minecraft.BundlerClassPathCapture
 [22:53:11] [Server thread/INFO]: OpenDonut: world 'world' seed 8275902214569690041 on Minecraft 26.3, configuration C:\Users\User\AppData\Local\OpenDonut\Server2\.\config\opendonut.yml
 [22:53:11] [Server thread/INFO]: OpenDonut: boundary checks are active; a player who leaves X=[0,100000) Z=[-100000,100000) by 2 block(s) will be handed to the proxy
 [22:54:11] [Server thread/INFO]: Server empty for 60 seconds, pausing
+[22:58:25] [Server thread/INFO]: Stopping server
+[22:58:25] [Server thread/INFO]: Saving players
+[22:58:25] [Server thread/INFO]: Saving worlds
+[22:58:25] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[22:58:25] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[22:58:25] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[22:58:25] [Server thread/INFO]: OpenDonut: stopping after 0 transfer request(s), 0 refused by the proxy

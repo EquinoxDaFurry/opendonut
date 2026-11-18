@@ -18,3 +18,6 @@
 [22:53:01 INFO] [opendonut]: OpenDonut: every backend must use the same seed. Put 'level-seed=8275902214569690041' in each backend's server.properties before its world is created.
 [22:53:01 INFO]: Listening on /[0:0:0:0:0:0:0:0]:25565
 [22:53:01 INFO]: Done (1.11s)!
+[23:00:32 INFO]: [initial connection] /127.0.0.1:53646 has disconnected
+[23:03:10 INFO]: [initial connection] /127.0.0.1:59980 has disconnected
+[23:03:13 INFO]: [initial connection] /127.0.0.1:59981 has disconnected
