@@ -45,21 +45,6 @@ Players don't need to manually switch servers. OpenDonut detects when they cross
 
 OpenDonut is currently in **0.1.0-dev**. It's an early prototype, so not everything is finished or fully tested yet.
 
-| Component | Status |
-|---|---|
-| Configuration system and YAML loader | Complete |
-| Region lookup and validation | Complete |
-| Seed management | Complete |
-| Bridge protocol | Complete |
-| Velocity plugin | Implemented |
-| Fabric mod | Implemented |
-| Boundary particle system | Implemented |
-| Automated unit tests | 216 passing |
-| Real-client transfer testing | Not yet verified |
-| Inventory, health and XP synchronization | Not implemented |
-| Block modification and entity ownership protection | Not implemented |
-| Seamless server transfers | Not implemented |
-
 See [docs/architecture.md](docs/architecture.md) for more information about the current implementation and its limitations.
 
 ## Requirements
